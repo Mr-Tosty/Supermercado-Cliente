@@ -1,41 +1,125 @@
 package com.vortexaronix.supermercado;
 
 import com.vortexaronix.supermercado.Frontend.SecurityConfigLoader;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
+import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.stage.Stage;
 
 public class Inicio extends Application {
 
+    private String servidorIp;
+    private int servidorPuerto;
+    private String tokenSeguridad;
+
+    public static class ContextoConfiguracion {
+        public static String ip;
+        public static int puerto;
+        public static String token;
+    }
+
+    private boolean cargarConfiguracion() {
+        Path configPath = Paths.get("server.vaconect");
+        if (!Files.exists(configPath)) {
+            mostrarErrorFatal("Archivo de conexión crítica 'server.vaconect' no encontrado en la raíz: " + configPath.toAbsolutePath());
+            return false;
+        }
+        try (BufferedReader reader = Files.newBufferedReader(configPath)) {
+            String linea = reader.readLine();
+            if (linea == null || linea.strip().isEmpty()) {
+                mostrarErrorFatal("El archivo 'server.vaconect' está vacío.");
+                return false;
+            }
+            String[] partes = linea.split(",");
+            if (partes.length < 3) {
+                mostrarErrorFatal("Formato inválido en 'server.vaconect'. Se esperaba: IP,PUERTO,TOKEN");
+                return false;
+            }
+            this.servidorIp = partes[0].strip();
+            this.servidorPuerto = Integer.parseInt(partes[1].strip());
+            this.tokenSeguridad = partes[2].strip();
+
+            if (this.servidorIp.isEmpty() || this.tokenSeguridad.isEmpty()) {
+                mostrarErrorFatal("La IP o el Token de seguridad no pueden estar vacíos.");
+                return false;
+            }
+            ContextoConfiguracion.ip = this.servidorIp;
+            ContextoConfiguracion.puerto = this.servidorPuerto;
+            ContextoConfiguracion.token = this.tokenSeguridad;
+            System.out.printf("[CONFIG] Conexión establecida exitosamente -> IP: %s | Puerto: %d%n", ContextoConfiguracion.ip, ContextoConfiguracion.puerto);
+            return true;
+        } catch (IOException e) {
+            mostrarErrorFatal("Error de Entrada/Salida al leer 'server.vaconect': " + e.getMessage());
+            return false;
+        } catch (NumberFormatException e) {
+            mostrarErrorFatal("El puerto especificado en 'server.vaconect' no es un número válido.");
+            return false;
+        }
+    }
+
     @Override
-    public void start(Stage primaryStage) {
+    public void start(Stage stage) throws Exception {
+        if (!cargarConfiguracion()) {
+            return;
+        }
         try {
-            // Instancia y ejecuta la lógica de configuración robusta
             SecurityConfigLoader.getInstance().initializeConfiguration();
-            
-            // Si la inicialización es exitosa, cargamos la interfaz principal
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/VentanaRegistro.fxml"));
-            primaryStage.setScene(new Scene(loader.load()));
-            primaryStage.setTitle("Vortex Aronix - Sistema de Gestión");
-            primaryStage.show();
-            
-        } catch (Exception e) {
-            // Manejo de error: Si falla el cargador, no se levanta la app
-            System.err.println("Error crítico de seguridad: " + e.getMessage());
-            System.exit(1); 
+            ContextoConfiguracion.ip = SecurityConfigLoader.getInstance().getServerIp();
+            ContextoConfiguracion.puerto = SecurityConfigLoader.getInstance().getServerPort();
+            ContextoConfiguracion.token = SecurityConfigLoader.getInstance().getApiToken();
+
+            if (ContextoConfiguracion.ip == null || ContextoConfiguracion.token == null || ContextoConfiguracion.puerto <= 0) {
+                throw new IllegalStateException("Los parámetros de red descifrados contienen valores nulos o inválidos.");
+            }
+
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/Principal.fxml"));
+            Parent root = loader.load();
+
+            Scene scene = new Scene(root);
+            stage.setTitle("Sistema de Gestión Comercial - Supermercado (VORTEX-PROD)");
+            stage.setScene(scene);
+
+            stage.setOnCloseRequest(event -> {
+                event.consume();
+                shutdownSequence();
+            });
+
+            stage.show();
+        } catch (IOException | NullPointerException e) {
+            System.err.println("[CRÍTICO] Fallo en el arranque de infraestructura: " + e.getMessage());
+            mostrarErrorFatal("Detalle del error: " + e.getLocalizedMessage());
         }
     }
 
     private void mostrarErrorFatal(String mensaje) {
+        if (Platform.isFxApplicationThread()) {
+            ejecutarAlertaYSalir(mensaje);
+        } else {
+            Platform.runLater(() -> ejecutarAlertaYSalir(mensaje));
+        }
+    }
+
+    private void ejecutarAlertaYSalir(String mensaje) {
         Alert alert = new Alert(Alert.AlertType.ERROR);
-        alert.setTitle("Fallo de Seguridad");
-        alert.setHeaderText("No se pudo iniciar el sistema");
+        alert.setTitle("Error de Infraestructura Técnica");
+        alert.setHeaderText("Carga de Aplicación Cancelada");
         alert.setContentText(mensaje);
         alert.showAndWait();
+        System.exit(1);
+    }
+
+    private void shutdownSequence() {
+        System.out.println("[CLIENTE] Cerrando recursos de red, sockets LAN y hardware...");
         Platform.exit();
+        System.exit(0);
     }
 
     public static void main(String[] args) {

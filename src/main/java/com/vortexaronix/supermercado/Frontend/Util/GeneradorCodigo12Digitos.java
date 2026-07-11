@@ -19,6 +19,7 @@ import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
+import javafx.scene.text.TextAlignment;
 
 /**
  * ----------------------------------------------------------------------------
@@ -34,43 +35,79 @@ import javafx.scene.text.Font;
  * ----------------------------------------------------------------------------
  */
 public class GeneradorCodigo12Digitos {
-    private static final Map<Integer, String> BITS = Map.of(
-        0, "0001101", 1, "0011001", 2, "0010011", 3, "0111101", 
-        4, "0100011", 5, "0110001", 6, "0101111", 7, "0111011", 
-        8, "0110111", 9, "0001011"
+
+    // Bloque Izquierdo: Paridad Impar (L-Pattern) - Inicia con espacio, termina con barra
+    private static final Map<Integer, String> L_PATTERNS = Map.of(
+        0, "0001101", 1, "0011001", 2, "0010011", 3, "0111101", 4, "0100011",
+        5, "0110001", 6, "0101111", 7, "0111011", 8, "0110111", 9, "0001011"
     );
 
+    // Es el complemento óptico exacto del patrón L (las barras se vuelven espacios y viceversa)
+    private static final Map<Integer, String> R_PATTERNS = Map.of(
+        0, "1110010", 1, "1100110", 2, "1101100", 3, "1000010", 4, "1011100",
+        5, "1001110", 6, "1010000", 7, "1000110", 8, "1001000", 9, "1110100"
+    );
+
+    /**
+     * Dibuja un código UPC-A estandarizado adaptando las dimensiones al Canvas.
+     * Incluye caracteres de guarda y tipografía inferior legible.
+     */
     public void dibujarCodigo(Canvas canvas, String codigo) {
-        if (!codigo.matches("\\d{12}")) return;
+        if (canvas == null || codigo == null || !codigo.matches("\\d{12}")) {
+            return;
+        }
+
         GraphicsContext gc = canvas.getGraphicsContext2D();
+        double canvasWidth = canvas.getWidth();
+        double canvasHeight = canvas.getHeight();
+        
         gc.setFill(Color.WHITE);
-        gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
+        gc.fillRect(0, 0, canvasWidth, canvasHeight);
+
+        int totalModulosEan = 95;
+        double paddingLateral = 15.0;
+        double moduloWidth = (canvasWidth - (paddingLateral * 2)) / totalModulosEan;
+        
+        double alturaBarrasNormales = canvasHeight * 0.70;
+        double alturaBarrasDeGuarda = canvasHeight * 0.82;
+
+        double currentX = paddingLateral;
         gc.setFill(Color.BLACK);
 
-        double x = 10;
-        // Patrón Inicio: 101
-        dibujarBloque(gc, "101", x); x += 9;
+        currentX = dibujarMóduloBits(gc, "101", currentX, moduloWidth, alturaBarrasDeGuarda);
 
-        // Dígitos 1-6
-        for(int i = 0; i < 6; i++) {
-            dibujarBloque(gc, BITS.get(codigo.charAt(i) - '0'), x); x += 21;
+        for (int i = 0; i < 6; i++) {
+            int digito = codigo.charAt(i) - '0';
+            currentX = dibujarMóduloBits(gc, L_PATTERNS.get(digito), currentX, moduloWidth, alturaBarrasNormales);
         }
 
-        // Central: 01010
-        dibujarBloque(gc, "01010", x); x += 15;
+        currentX = dibujarMóduloBits(gc, "01010", currentX, moduloWidth, alturaBarrasDeGuarda);
 
-        // Dígitos 7-12
-        for(int i = 6; i < 12; i++) {
-            dibujarBloque(gc, BITS.get(codigo.charAt(i) - '0'), x); x += 21;
+        for (int i = 6; i < 12; i++) {
+            int digito = codigo.charAt(i) - '0';
+            currentX = dibujarMóduloBits(gc, R_PATTERNS.get(digito), currentX, moduloWidth, alturaBarrasNormales);
         }
 
-        // Patrón Fin: 101
-        dibujarBloque(gc, "101", x);
+        dibujarMóduloBits(gc, "101", currentX, moduloWidth, alturaBarrasDeGuarda);
+
+        gc.setFont(Font.font("Monospaced", canvasHeight * 0.14));
+        gc.setTextAlign(TextAlignment.CENTER);
+        
+        String textoFormateado = String.format("%s  %s", codigo.substring(0, 6), codigo.substring(6, 12));
+        gc.fillText(textoFormateado, canvasWidth / 2.0, canvasHeight - (canvasHeight * 0.04));
     }
 
-    private void dibujarBloque(GraphicsContext gc, String bits, double x) {
-        for(int i = 0; i < bits.length(); i++) {
-            if(bits.charAt(i) == '1') gc.fillRect(x + (i * 3), 10, 3, 50);
+    /**
+     * Procesa la cadena binaria de un módulo y dibuja rectángulos proporcionales.
+     */
+    private double dibujarMóduloBits(GraphicsContext gc, String bits, double startX, double moduloWidth, double altura) {
+        for (int i = 0; i < bits.length(); i++) {
+            if (bits.charAt(i) == '1') {
+                // Dibujar la barra vertical negra con precisión decimal
+                gc.fillRect(startX, 5, moduloWidth + 0.2, altura); // El +0.2 elimina líneas blancas por redondeo de píxeles
+            }
+            startX += moduloWidth;
         }
+        return startX;
     }
 }

@@ -14,6 +14,8 @@
  */
 package com.vortexaronix.supermercado.Frontend.Network;
 
+import com.vortexaronix.supermercado.Frontend.SecurityConfigLoader;
+import com.vortexaronix.supermercado.Inicio.ContextoConfiguracion;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -35,34 +37,79 @@ import java.time.Duration;
  */
 public class ApiClient {
 
-    // Ajusta la IP según la LAN donde corra el servidor Spring
-    private static final String BASE_URL = "http://localhost:8080/api/productos";
-    private static final String TOKEN = "vortex-aronix-secret-token-2026"; 
     private final HttpClient client;
 
     public ApiClient() {
         this.client = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
+                .connectTimeout(Duration.ofSeconds(5))
+                .followRedirects(HttpClient.Redirect.NORMAL)
                 .build();
     }
 
+    /**
+     * Construye la URL base de forma dinámica en cada petición.
+     * Evita IPs cableadas (hardcoded) y apunta a la interfaz real descubierta en la LAN.
+     */
+    private String obtenerUrlBase() {
+        String ip = ContextoConfiguracion.ip;
+        int puerto = ContextoConfiguracion.puerto;
+
+        if (ip == null || puerto <= 0) {
+            ip = SecurityConfigLoader.getInstance().getServerIp();
+            puerto = SecurityConfigLoader.getInstance().getServerPort();
+        }
+
+        if (ip == null) {
+            ip = "127.0.0.1";
+            puerto = 8080;
+        }
+
+        return String.format("http://%s:%d/api/productos", ip, puerto);
+    }
+
+    /**
+     * Extrae el token descifrado de la memoria RAM de manera dinámica.
+     */
+    private String obtenerTokenSeguridad() {
+        String token = ContextoConfiguracion.token;
+        if (token == null) {
+            token = SecurityConfigLoader.getInstance().getApiToken();
+        }
+        return token != null ? token.trim() : "TOKEN-AUSENTE-PROD";
+    }
+
+    /**
+     * Envía una petición POST blindada al Backend con cabeceras de autorización dinámicas.
+     */
     public HttpResponse<String> post(String endpoint, String jsonBody) throws Exception {
+        String urlDestino = obtenerUrlBase() + endpoint;
+        String tokenActivo = obtenerTokenSeguridad();
+
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(BASE_URL + endpoint))
+                .uri(URI.create(urlDestino))
+                .timeout(Duration.ofSeconds(4))
                 .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + TOKEN)
+                .header("Authorization", "Bearer " + tokenActivo) // Acoplamiento estricto con FiltroSeguridadLan
                 .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                 .build();
+
         return client.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
+    /**
+     * Envía una petición GET blindada al Backend con cabeceras de autorización dinámicas.
+     */
     public HttpResponse<String> get(String endpoint) throws Exception {
+        String urlDestino = obtenerUrlBase() + endpoint;
+        String tokenActivo = obtenerTokenSeguridad();
+
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(BASE_URL + endpoint))
-                .header("Authorization", "Bearer " + TOKEN)
+                .uri(URI.create(urlDestino))
+                .timeout(Duration.ofSeconds(4))
+                .header("Authorization", "Bearer " + tokenActivo) // Acoplamiento estricto con FiltroSeguridadLan
                 .GET()
                 .build();
+
         return client.send(request, HttpResponse.BodyHandlers.ofString());
     }
-    
 }

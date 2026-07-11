@@ -14,268 +14,265 @@
  */
 package com.vortexaronix.supermercado.Frontend;
 
-import com.vortexaronix.supermercado.Frontend.Util.GeneradorCodigo12Digitos;
+import com.vortexaronix.supermercado.Frontend.Network.ApiClient;
+import com.vortexaronix.supermercado.Frontend.Util.ProductoFX;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.security.SecureRandom;
+import java.time.Duration;
 import javafx.application.Platform;
+import javafx.beans.value.ChangeListener;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.control.*;
+import javafx.scene.control.cell.PropertyValueFactory;
 
 /**
  * ----------------------------------------------------------------------------
  * [ DESCRIPCIÓN TÉCNICA ]
  * ----------------------------------------------------------------------------
- * Descripción : 
- * Módulos     : 
- * Dependencias: 
- * 
- * @author  solda (VA Developer)
+ * Descripción : Módulos : Dependencias:
+ *
+ * @author solda (VA Developer)
  * @version 1.0
- * @since   10 jul 2026
+ * @since 10 jul 2026
  * ----------------------------------------------------------------------------
  */
 public class VentanaRegistroController {
 
-    @FXML private TextField txtNombre;
-    @FXML private TextField txtDescripcion;
-    @FXML private TextField txtPrecio;
-    @FXML private TextField txtCodigo;
-    @FXML private TextField txtStock;
-    @FXML private Label lblContadorDesperdicio;
-    @FXML private Button btnImprimir;
-    @FXML private Canvas canvasPreview;
+    // Inyección obligatoria de Campos de Entrada de Texto FXML
+    @FXML
+    private TextField txtNombre;
+    @FXML
+    private TextField txtDescripcion;
+    @FXML
+    private TextField txtPrecio;
+    @FXML
+    private TextField txtCodigo;
+    @FXML
+    private TextField txtStock;
+
+    // Inyección obligatoria de Componentes de Alerta y Estado de UI
+    @FXML
+    private Label lblContadorDesperdicio;
+    @FXML
+    private Label lblAlertaCam;
+    @FXML
+    private Label lblStatusNet;
+
+    // Controles de Acción y Renderizado Óptico
+    @FXML
+    private Button btnImprimir;
+    @FXML
+    private Canvas canvasPreview;
 
     private final int CAPACIDAD_HOJA = 9;
     private int registrosValidados = 0;
-    private final GeneradorCodigo12Digitos generador = new GeneradorCodigo12Digitos();
+    private boolean filaActualYaContabilizada = false;
 
-    private final HttpClient httpClient = HttpClient.newHttpClient();
-    private final String BASE_URL = "http://" + SecurityConfigLoader.getInstance().getServerIp() + 
-                                     ":" + SecurityConfigLoader.getInstance().getServerPort() + "/api/productos";
-    
-    public void handleEscaneo(String codigo) {
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(BASE_URL + "/escanear/" + codigo))
-                .GET()
-                .header("Authorization", "Bearer " + SecurityConfigLoader.getInstance().getApiToken())
-                .build();
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
 
-        httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-                .thenAccept(response -> {
-                    if (response.statusCode() == 200) {
-                        Platform.runLater(() -> procesarProductoExistente(response.body()));
-                    } else if (response.statusCode() == 404) {
-                        Platform.runLater(() -> activarModoRegistroNuevo(codigo));
-                    }
-                });
+    private String urlBaseServer;
+
+    @FXML
+    public void initialize() {
+        urlBaseServer = "http://" + SecurityConfigLoader.getInstance().getServerIp()
+                + ":" + SecurityConfigLoader.getInstance().getServerPort() + "/api/productos";
+
+        ChangeListener<String> listenerCamposPlanta = (observable, oldValue, newValue) -> evaluarYAcumularPlanillaDinamica();
+
+        txtNombre.textProperty().addListener(listenerCamposPlanta);
+        txtDescripcion.textProperty().addListener(listenerCamposPlanta);
+        txtPrecio.textProperty().addListener(listenerCamposPlanta);
+        txtCodigo.textProperty().addListener(listenerCamposPlanta);
+        txtStock.textProperty().addListener(listenerCamposPlanta);
+
+        btnImprimir.setDisable(true);
+        lblContadorDesperdicio.setText("Planilla de Hoja: " + registrosValidados + " / " + CAPACIDAD_HOJA);
+        txtCodigo.setEditable(true);
+        lblStatusNet.setText("Red LAN: Activa -> Canal de datos apuntando a " + urlBaseServer);
     }
-    
-    public void enviarRegistroHibrido(String jsonPayload) {
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(BASE_URL + "/registro-hibrido"))
-                .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + SecurityConfigLoader.getInstance().getApiToken())
-                .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
-                .build();
 
-        httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-                .thenAccept(response -> {
-                    if (response.statusCode() == 200) {
-                        Platform.runLater(() -> mostrarAlerta("Éxito", "Producto registrado correctamente."));
-                    }
-                });
-    }
-    
-    public void enviarSalidaStock(String jsonPayload) {
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(BASE_URL + "/stock/salida"))
-                .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + SecurityConfigLoader.getInstance().getApiToken())
-                .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
-                .build();
+    private void evaluarYAcumularPlanillaDinamica() {
+        // Corrección: Escapado doble para la expresión regular
+        boolean todosCamposCompletos = !txtNombre.getText().isBlank()
+                && !txtDescripcion.getText().isBlank()
+                && !txtPrecio.getText().isBlank()
+                && txtCodigo.getText().matches("\\d{12}")
+                && !txtStock.getText().isBlank();
 
-        httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-                .thenAccept(response -> {
-                    if (response.statusCode() == 200) {
-                        System.out.println("Salida de stock confirmada.");
-                    } else {
-                        Platform.runLater(() -> mostrarAlerta("Error", "No se pudo procesar la salida (Stock insuficiente)."));
-                    }
-                });
+        if (todosCamposCompletos && !filaActualYaContabilizada) {
+            if (registrosValidados < CAPACIDAD_HOJA) {
+                registrosValidados++;
+                filaActualYaContabilizada = true;
+                evaluarBloqueoDeImpresion();
+            }
+        } else if (!todosCamposCompletos && filaActualYaContabilizada) {
+            if (registrosValidados > 0) {
+                registrosValidados--;
+                filaActualYaContabilizada = false;
+                evaluarBloqueoDeImpresion();
+            }
+        }
     }
-    
-    private void procesarProductoExistente(String json) {
-        // Validación defensiva contra respuesta nula o vacía
-        if (json == null || json.trim().isEmpty()) {
-            mostrarAlerta("Error de Conexión", "El servidor no devolvió datos válidos.");
+
+    private void evaluarBloqueoDeImpresion() {
+        lblContadorDesperdicio.setText("Planilla de Hoja: " + registrosValidados + " / " + CAPACIDAD_HOJA);
+
+        if (registrosValidados == CAPACIDAD_HOJA) {
+            btnImprimir.setDisable(false);
+            CanvasGenerator.renderCodeMarkup(canvasPreview, txtCodigo.getText().trim());
+            lblAlertaCam.setText("Estado: Planilla Llena. Listo para despacho.");
+        } else {
+            btnImprimir.setDisable(true);
+        }
+    }
+
+    @FXML
+    @SuppressWarnings("unused")
+    private void handleImprimirYEnviar(ActionEvent event) {
+        if (registrosValidados != CAPACIDAD_HOJA) {
             return;
         }
 
-        // Extracción segura de valores
-        String nombre = extraerValorJson(json, "nombre");
-        String descripcion = extraerValorJson(json, "descripcion");
-        String precioStr = extraerValorJson(json, "precio");
-        String stockStr = extraerValorJson(json, "stock");
+        String jsonPayload = String.format(
+                "{\"codigoBarras\":\"%s\",\"nombre\":\"%s\",\"descripcion\":\"%s\",\"precio\":%s,\"stockActual\":%s}",
+                txtCodigo.getText().trim(), txtNombre.getText().trim(), txtDescripcion.getText().trim(),
+                txtPrecio.getText().trim(), txtStock.getText().trim()
+        );
 
-        // Actualización de campos con manejo de valores por defecto
-        txtNombre.setText(nombre.isEmpty() ? "Sin nombre" : nombre);
-        txtDescripcion.setText(descripcion.isEmpty() ? "Sin descripción" : descripcion);
-        txtPrecio.setText(precioStr.isEmpty() ? "0.00" : precioStr);
-        txtStock.setText(stockStr.isEmpty() ? "0" : stockStr);
+        Thread.startVirtualThread(() -> {
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(urlBaseServer + "/generate-hibrido"))
+                        .header("Content-Type", "application/json")
+                        .header("Authorization", "Bearer " + SecurityConfigLoader.getInstance().getApiToken())
+                        .POST(HttpRequest.BodyPublishers.ofString(jsonPayload)).build();
 
-        // Habilitación de edición
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200 || response.statusCode() == 201) {
+                    System.out.println("[LAN-POST] Sincronización exitosa.");
+                } else {
+                    System.err.println("[LAN-ERROR] Servidor rechazó la inyección: " + response.statusCode());
+                }
+            } catch (Exception e) {
+                System.err.println("[LAN-ERROR] Fallo crítico: " + e.getMessage());
+            }
+        });
+
+        registrosValidados = 0;
+        filaActualYaContabilizada = false;
+        evaluarBloqueoDeImpresion();
+        limpiarCamposFormulario();
+    }
+
+    @FXML
+    @SuppressWarnings("unused")
+    public void handleAgregarFila(ActionEvent event) {
+        limpiarCamposFormulario();
+        filaActualYaContabilizada = false;
+        lblAlertaCam.setText("Estado: Nueva fila habilitada para monitoreo.");
+    }
+
+    @FXML
+    @SuppressWarnings("unused")
+    private void handleGenerateCryptoCode(ActionEvent event) {
+        SecureRandom random = new SecureRandom();
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 12; i++) {
+            sb.append(random.nextInt(10));
+        }
+        String codigoGenerado = sb.toString();
+
+        txtCodigo.setText(codigoGenerado);
         txtCodigo.setEditable(false);
-        txtNombre.setEditable(true);
-        txtDescripcion.setEditable(true);
-        txtPrecio.setEditable(true);
-        txtStock.setEditable(true);
+        CanvasGenerator.renderCodeMarkup(canvasPreview, codigoGenerado);
+    }
 
-        lblContadorDesperdicio.setText("Producto cargado correctamente.");
+    public void handleEscaneo(String codigo) {
+        if (codigo == null || codigo.strip().isEmpty()) {
+            return;
+        }
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(urlBaseServer + "/escanear/" + codigo.trim()))
+                .header("Authorization", "Bearer " + SecurityConfigLoader.getInstance().getApiToken())
+                .GET().build();
+
+        Thread.startVirtualThread(() -> {
+            try {
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                Platform.runLater(() -> {
+                    if (response.statusCode() == 200) {
+                        String json = response.body();
+                        txtCodigo.setText(codigo.trim());
+                        txtNombre.setText(extraerValorJson(json, "nombre"));
+                        txtDescripcion.setText(extraerValorJson(json, "descripcion"));
+                        txtPrecio.setText(extraerValorJson(json, "precio"));
+                        txtStock.setText(extraerValorJson(json, "stockActual"));
+                        txtCodigo.setEditable(false);
+                    } else if (response.statusCode() == 404) {
+                        limpiarCamposFormulario();
+                        txtCodigo.setText(codigo.trim());
+                        txtCodigo.setEditable(false);
+                        lblContadorDesperdicio.setText("Código disponible. Ingrese los datos.");
+                        txtNombre.requestFocus();
+                    }
+                });
+            } catch (Exception e) {
+                Platform.runLater(() -> lblStatusNet.setText("Red LAN: Error de conexión."));
+            }
+        });
+    }
+
+    private void limpiarCamposFormulario() {
+        txtCodigo.clear();
+        txtCodigo.setEditable(true);
+        txtNombre.clear();
+        txtDescripcion.clear();
+        txtPrecio.clear();
+        txtStock.clear();
     }
 
     private String extraerValorJson(String json, String key) {
-        if (json == null) return "";
-        
+        if (json == null) {
+            return "";
+        }
+        // Corrección crítica: Escapado correcto de comillas en Java
         String quoteKey = "\"" + key + "\":";
         int start = json.indexOf(quoteKey);
-        
-        if (start == -1) return "";
-        
+        if (start == -1) {
+            return "";
+        }
         start += quoteKey.length();
-        
-        // Saltar espacios en blanco después de los dos puntos
+
         while (start < json.length() && (json.charAt(start) == ' ' || json.charAt(start) == ':')) {
             start++;
         }
-        
-        if (start >= json.length()) return "";
+        if (start >= json.length()) {
+            return "";
+        }
 
-        // Si es String (comienza con comillas)
         if (json.charAt(start) == '"') {
             start++;
             int end = json.indexOf("\"", start);
             return (end == -1) ? "" : json.substring(start, end);
         } else {
-            // Si es número o booleano (hasta coma o llave de cierre)
             int endComma = json.indexOf(",", start);
             int endBrace = json.indexOf("}", start);
-            
-            int end = -1;
-            if (endComma != -1 && endBrace != -1) {
-                end = Math.min(endComma, endBrace);
-            } else {
-                end = (endComma != -1) ? endComma : endBrace;
+            int end = (endComma != -1 && (endBrace == -1 || endComma < endBrace)) ? endComma : endBrace;
+            if (end == -1) {
+                end = json.length();
             }
-            
-            if (end == -1) end = json.length();
             return json.substring(start, end).trim();
         }
-    }
-
-    private void activarModoRegistroNuevo(String codigo) {
-        // Limpieza profunda de los campos de texto
-        txtNombre.clear();
-        txtDescripcion.clear();
-        txtPrecio.clear();
-        txtStock.clear();
-        
-        // Fijación del código escaneado que no existe en BD
-        txtCodigo.setText(codigo);
-        txtCodigo.setEditable(false); // Bloqueado para mantener el 12 dígitos
-
-        // Habilitación de campos de entrada para el nuevo producto
-        txtNombre.setEditable(true);
-        txtDescripcion.setEditable(true);
-        txtPrecio.setEditable(true);
-        txtStock.setEditable(true);
-
-        // Estado visual de la interfaz
-        lblContadorDesperdicio.setText("Código disponible. Ingrese los datos para registrar este nuevo producto.");
-        
-        // Bloqueo de acciones de impresión hasta completar validación de fila
-        btnImprimir.setDisable(true);
-        
-        // Foco automático para eficiencia del trabajador
-        txtNombre.requestFocus();
-    }
-    
-    @FXML
-    public void initialize() {
-        btnImprimir.setDisable(true);
-        lblContadorDesperdicio.setText("Planilla de Hoja: 0 / " + CAPACIDAD_HOJA);
-    }
-
-    @FXML
-    public void handleAgregarFila() {
-        if (validarCampos()) {
-            if (registrosValidados < CAPACIDAD_HOJA) {
-                registrosValidados++;
-                actualizarEstadoUI();
-                limpiarCampos();
-            }
-        } else {
-            mostrarAlerta("Error de Validación", "Todos los campos deben estar completos y el código debe tener 12 dígitos.");
-        }
-    }
-
-    private boolean validarCampos() {
-        return !txtNombre.getText().isBlank() &&
-               !txtDescripcion.getText().isBlank() &&
-               !txtPrecio.getText().isBlank() &&
-               txtCodigo.getText().matches("\\d{12}") &&
-               !txtStock.getText().isBlank();
-    }
-
-    private void actualizarEstadoUI() {
-        lblContadorDesperdicio.setText("Planilla de Hoja: " + registrosValidados + " / " + CAPACIDAD_HOJA);
-        
-        if (registrosValidados == CAPACIDAD_HOJA) {
-            btnImprimir.setDisable(false);
-            generador.dibujarCodigo(canvasPreview, txtCodigo.getText());
-        }
-    }
-
-    @FXML
-    private void handleImprimirYEnviar() {
-                // 1. Obtener credenciales desde el gestor cargado en el arranque
-        SecurityConfigLoader config = SecurityConfigLoader.getInstance();
-        String url = "http://" + config.getServerIp() + ":" + config.getServerPort() + "/api/productos";
-
-        // 2. Construir la conexión
-        String jsonPayload = "{\"nombre\":\"Producto...\"}"; // Tu JSON
-
-        HttpClient client = HttpClient.newHttpClient();
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("Authorization", "Bearer " + config.getApiToken()) // Conexión segura
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
-                .build();
-
-        // 3. Ejecutar conexión de forma asíncrona
-        client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-                .thenAccept(response -> {
-                    if (response.statusCode() == 200) {
-                        System.out.println("Conexión Exitosa");
-                    }
-                });
-    }
-
-    private void limpiarCampos() {
-        txtNombre.clear();
-        txtDescripcion.clear();
-        txtPrecio.clear();
-        txtCodigo.clear();
-        txtStock.clear();
-    }
-
-    private void mostrarAlerta(String titulo, String mensaje) {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle(titulo);
-        alert.setContentText(mensaje);
-        alert.show();
     }
 }

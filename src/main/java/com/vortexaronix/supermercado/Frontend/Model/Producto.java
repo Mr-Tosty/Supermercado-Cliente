@@ -14,10 +14,13 @@
  */
 package com.vortexaronix.supermercado.Frontend.Model;
 
+import java.math.BigDecimal;
 import javafx.beans.property.DoubleProperty;
 import javafx.beans.property.IntegerProperty;
+import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleDoubleProperty;
 import javafx.beans.property.SimpleIntegerProperty;
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 
@@ -36,20 +39,49 @@ import javafx.beans.property.StringProperty;
  */
 public class Producto {
 
+    private final StringProperty codigoBarras = new SimpleStringProperty();
     private final StringProperty nombre = new SimpleStringProperty();
     private final StringProperty descripcion = new SimpleStringProperty();
-    private final DoubleProperty precio = new SimpleDoubleProperty();
-    private final StringProperty codigo = new SimpleStringProperty();
-    private final IntegerProperty stock = new SimpleIntegerProperty();
+    private final ObjectProperty<BigDecimal> precio = new SimpleObjectProperty<>();
+    private final IntegerProperty stockActual = new SimpleIntegerProperty();
 
-    public Producto(String n, String d, double p, String c, int s) {
-        nombre.set(n); descripcion.set(d); precio.set(p); codigo.set(c); stock.set(s);
+    /**
+     * Constructor por Defecto.
+     * Requerido obligatoriamente por los motores de red para la deserialización
+     * de respuestas JSON entrantes desde la API de Spring Boot.
+     */
+    public Producto() {
     }
-    // Getters y Property getters necesarios para TableColumn
+
+    /**
+     * Constructor Completo de Inicialización Comercial.
+     */
+    public Producto(String codigoBarras, String nombre, String descripcion, BigDecimal precio, int stockActual) {
+        this.codigoBarras.set(codigoBarras);
+        this.nombre.set(nombre);
+        this.descripcion.set(descripcion);
+        this.precio.set(precio);
+        this.stockActual.set(stockActual);
+    }
+
+    public StringProperty codigoBarrasProperty() { return codigoBarras; }
     public StringProperty nombreProperty() { return nombre; }
     public StringProperty descripcionProperty() { return descripcion; }
-    public DoubleProperty precioProperty() { return precio; }
-    public StringProperty codigoProperty() { return codigo; }
-    public IntegerProperty stockProperty() { return stock; }
-    
+    public ObjectProperty<BigDecimal> precioProperty() { return precio; }
+    public IntegerProperty stockActualProperty() { return stockActual; }
+
+    public String getCodigoBarras() { return codigoBarras.get(); }
+    public void setCodigoBarras(String value) { this.codigoBarras.set(value); }
+
+    public String getNombre() { return nombre.get(); }
+    public void setNombre(String value) { this.nombre.set(value); }
+
+    public String getDescripcion() { return descripcion.get(); }
+    public void setDescripcion(String value) { this.descripcion.set(value); }
+
+    public BigDecimal getPrecio() { return precio.get(); }
+    public void setPrecio(BigDecimal value) { this.precio.set(value); }
+
+    public int getStockActual() { return stockActual.get(); }
+    public void setStockActual(int value) { this.stockActual.set(value); }
 }

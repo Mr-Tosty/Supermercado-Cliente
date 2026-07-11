@@ -14,9 +14,9 @@
  */
 package com.vortexaronix.supermercado.Frontend;
 
+import com.vortexaronix.supermercado.Frontend.Util.GeneradorCodigo12Digitos;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
-import javafx.scene.paint.Color;
 
 /**
  * ----------------------------------------------------------------------------
@@ -33,17 +33,30 @@ import javafx.scene.paint.Color;
  */
 public class CanvasGenerator {
 
+    private static final GeneradorCodigo12Digitos GENERADOR_REAL = new GeneradorCodigo12Digitos();
+
+    /**
+     * Limpia el Canvas del Frontend y renderiza una simbología de barras industrial real.
+     * Sincronizado dinámicamente con los requerimientos de escaneo y hardware.
+     */
     public static void renderCodeMarkup(Canvas canvas, String codigo) {
+        if (canvas == null) {
+            return;
+        }
+
         GraphicsContext gc = canvas.getGraphicsContext2D();
+
         gc.clearRect(0, 0, canvas.getWidth(), canvas.getHeight());
-        gc.setFill(Color.DARKSLATEGRAY);
-        gc.fillRect(5, 5, canvas.getWidth() - 10, canvas.getHeight() - 10);
-        gc.setStroke(Color.WHITESMOKE);
-        gc.setLineWidth(2);
-        // Simulación visual del renderizado de barras dinámicas basado en el ID
-        for (int i = 0; i < codigo.length(); i++) {
-            gc.strokeLine(15 + (i * 9), 20, 15 + (i * 9), 70);
+
+        if (codigo == null || !codigo.matches("\\d{12}")) {
+            System.err.println("[RENDER] Advertencia: Intento de renderizado cancelado por código malformado.");
+            return;
+        }
+
+        try{
+            GENERADOR_REAL.dibujarCodigo(canvas, codigo);
+        } catch (Exception e) {
+            System.err.println("[RENDER CRÍTICO] Error al procesar la matriz de bits del Canvas: " + e.getMessage());
         }
     }
-    
 }

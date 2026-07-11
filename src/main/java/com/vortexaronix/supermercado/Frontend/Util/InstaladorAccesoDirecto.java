@@ -35,10 +35,13 @@ import java.nio.file.StandardCopyOption;
  */
 public class InstaladorAccesoDirecto {
 
+    /**
+     * Verifica la existencia y aprovisiona el acceso directo en el escritorio del usuario.
+     * Fuerza la sincronización de las carpetas de ejecución para evitar fallos de lectura criptográfica.
+     */
     public void verificarYCrearAccesoDirecto() throws Exception {
         String os = System.getProperty("os.name").toLowerCase();
         if (!os.contains("win")) {
-            // Lógica exclusiva de persistencia en entornos basados en Windows por especificación del método del sistema (.ico)
             return;
         }
 
@@ -49,11 +52,12 @@ public class InstaladorAccesoDirecto {
         if (Files.exists(shortcutPath)) {
             return; 
         }
-
-        // Extraer ejecutable JAR actual y recurso de icono
+        
         Path currentJar = Paths.get(InstaladorAccesoDirecto.class.getProtectionDomain()
                 .getCodeSource().getLocation().toURI());
-        
+       
+        Path carpetaDeEjecucionReal = currentJar.getParent().toAbsolutePath();
+
         Path appDataDir = Paths.get(System.getenv("APPDATA"), "VortexAronix");
         Files.createDirectories(appDataDir);
         Path iconFile = appDataDir.resolve("appIcon.ico");
@@ -63,32 +67,39 @@ public class InstaladorAccesoDirecto {
                 if (is != null) {
                     Files.copy(is, iconFile, StandardCopyOption.REPLACE_EXISTING);
                 } else {
-                    // Fallback vacío por robustez si el recurso estructural no existe en el classpath raíz
                     Files.createFile(iconFile);
                 }
             }
         }
+        
+        String jarRutaEscapada = currentJar.toAbsolutePath().toString().replace("\\", "\\\\");
+        String carpetaRutaEscapada = carpetaDeEjecucionReal.toString().replace("\\", "\\\\");
+        String iconoRutaEscapada = iconFile.toAbsolutePath().toString().replace("\\", "\\\\");
 
-        // Script VBScript inyectado dinámicamente para manipular el componente COM de Windows y la API Shell
         String vbsScript = 
             "Set oWS = WScript.CreateObject(\"WScript.Shell\")\n" +
             "sLinkFile = \"" + shortcutPath.toAbsolutePath().toString() + "\"\n" +
             "Set oLink = oWS.CreateShortcut(sLinkFile)\n" +
             "oLink.TargetPath = \"javaw.exe\"\n" +
-            "oLink.Arguments = \"-jar \"\"" + currentJar.toAbsolutePath().toString() + "\"\"\"\n" +
-            "oLink.Description = \"SuperMarket Manager Pro\"\n" +
-            "oLink.IconLocation = \"" + iconFile.toAbsolutePath().toString() + ", 0\"\n" +
-            "oLink.WorkingDirectory = \"" + currentJar.getParent().toAbsolutePath().toString() + "\"\n" +
+            "oLink.Arguments = \"-jar " + jarRutaEscapada + "\"\n" +
+            "oLink.Description = \"SuperMarket Manager Pro - Sistema de Gestión Comercial\"\n" +
+            "oLink.IconLocation = \"" + iconoRutaEscapada + ", 0\"\n" +
+            "oLink.WorkingDirectory = \"" + carpetaRutaEscapada + "\"\n" +
             "oLink.Save\n";
 
         Path vbsFile = appDataDir.resolve("create_shortcut.vbs");
+
         Files.writeString(vbsFile, vbsScript);
 
         ProcessBuilder pb = new ProcessBuilder("wscript.exe", vbsFile.toAbsolutePath().toString());
         Process process = pb.start();
-        process.waitFor();
+        
+        int exitCode = process.waitFor();
+        if (exitCode != 0) {
+            System.err.println("[ALERTA BUILD] WScript finalizó con un código de salida anómalo durante la instalación.");
+        }
 
         Files.deleteIfExists(vbsFile);
+        System.out.println("[DESPLIEGUE] Acceso directo nativo 'SuperMarket Manager Pro' instalado con éxito en el escritorio.");
     }
-    
 }

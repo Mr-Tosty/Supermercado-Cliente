@@ -14,7 +14,7 @@
  */
 package com.vortexaronix.supermercado.Frontend;
 
-import java.io.File;
+import java.io.BufferedReader;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -44,118 +44,94 @@ import javax.crypto.spec.SecretKeySpec;
  * ----------------------------------------------------------------------------
  */
 public class SecurityConfigLoader {
-
-    private static final String OS = System.getProperty("os.name").toLowerCase();
-    private static final String WIN_PATH = "C:\\Users\\Public\\Vortex Aronix\\Data Base\\SuperMarket\\";
-    private static final String LINUX_PATH = "/var/tmp/Vortex_Aronix/Data_Base/SuperMarket/";
-    private static final String FILE_NAME = "network.enc";
-    private static final String RAW_FILE = "server.vaconect";
+    private static final String CLAVE_ESTATICA = "VortexLanCrypt12"; 
     
     private static SecurityConfigLoader instance;
-
-    static boolean validarTokenMaestroTI(String token) {
-        return "TI-MASTER-VORTEX-2026".equals(token.trim());
-    }
     private String serverIp;
     private int serverPort;
-    private String apiToken;
-    
+    private String serverToken;
+
     public static SecurityConfigLoader getInstance() {
-        if (instance == null) instance = new SecurityConfigLoader();
+        if (instance == null) {
+            instance = new SecurityConfigLoader();
+        }
         return instance;
     }
 
-    // Llave estática de 16 bytes para AES-128
-    private static final byte[] AES_KEY = {
-        0x56, 0x6f, 0x72, 0x74, 0x65, 0x78, 0x41, 0x72,
-        0x6f, 0x6e, 0x69, 0x78, 0x4e, 0x65, 0x74, 0x5f
-    };
+    /**
+     * Valida el Token Maestro de TI para levantar la pantalla perimetral de bloqueo.
+     */
+    public static boolean validarTokenMaestroTI(String token) {
+        return "TI-MASTER-VORTEX-2026".equals(token != null ? token.trim() : "");
+    }
 
+    /**
+     * Ejecuta el flujo dinámico de verificación, cifrado y autodestrucción en el disco duro.
+     */
     public void initializeConfiguration() throws Exception {
-        Path secureDir = Paths.get(OS.contains("win") ? WIN_PATH : LINUX_PATH);
-        Path secureFile = secureDir.resolve(FILE_NAME);
+        String os = System.getProperty("os.name").toLowerCase();
+        Path secureDir = os.contains("win") ? 
+                Paths.get(System.getenv("APPDATA"), "VortexAronix") : 
+                Paths.get(System.getProperty("user.home"), ".config", "vortexaronix");
+        
+        Path secureFile = secureDir.resolve("network.enc");
 
         if (Files.exists(secureFile)) {
-            loadEncryptedConfig(secureFile);
-        } else {
-            Path jarDir = Paths.get(SecurityConfigLoader.class.getProtectionDomain()
-                    .getCodeSource().getLocation().toURI()).getParent();
-            Path rawConfig = jarDir.resolve(RAW_FILE);
+            String contenidoBase64 = Files.readString(secureFile, StandardCharsets.UTF_8).trim();
+            byte[] bytesCifrados = Base64.getDecoder().decode(contenidoBase64);
 
+            Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
+            cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(CLAVE_ESTATICA.getBytes(StandardCharsets.UTF_8), "AES"));
+            
+            String datosDescifrados = new String(cipher.doFinal(bytesCifrados), StandardCharsets.UTF_8);
+            String[] tokens = datosDescifrados.split("\\|");
+            
+            this.serverIp = tokens[0];
+            this.serverPort = Integer.parseInt(tokens[1]);
+            this.serverToken = tokens[2];
+            
+            System.out.println("[CLIENTE-SECURITY] Configuración segura cargada exitosamente desde la ruta profunda del S.O.");
+        } else {
+            Path rawConfig = Paths.get("server.vaconect");
             if (!Files.exists(rawConfig)) {
-                throw new FileNotFoundException("No se encontró archivo de configuración inicial: " + RAW_FILE);
+                throw new FileNotFoundException("Infraestructura ausente. No se encontró 'network.enc' ni 'server.vaconect'.");
             }
 
             Properties props = new Properties();
-            try (InputStream in = Files.newInputStream(rawConfig)) {
-                props.load(in);
+            try (BufferedReader reader = Files.newBufferedReader(rawConfig, StandardCharsets.UTF_8)) {
+                props.load(reader);
             }
 
             this.serverIp = props.getProperty("server.ip");
-            this.serverPort = Integer.parseInt(props.getProperty("server.port"));
-            this.apiToken = props.getProperty("server.token");
+            String puertoStr = props.getProperty("server.port");
+            this.serverToken = props.getProperty("server.token");
+
+            if (this.serverIp == null || puertoStr == null || this.serverToken == null) {
+                throw new IllegalStateException("El archivo 'server.vaconect' existe pero sus propiedades internas están corruptas.");
+            }
+            this.serverPort = Integer.parseInt(puertoStr.trim());
+
+            String rawPayload = this.serverIp + "|" + this.serverPort + "|" + this.serverToken;
+            Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
+            cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(CLAVE_ESTATICA.getBytes(StandardCharsets.UTF_8), "AES"));
+            
+            byte[] encryptedBytes = cipher.doFinal(rawPayload.getBytes(StandardCharsets.UTF_8));
+            String base64Payload = Base64.getEncoder().encodeToString(encryptedBytes);
 
             Files.createDirectories(secureDir);
-            saveEncryptedConfig(secureFile);
-            applySystemAttributes(secureFile);
-            Files.delete(rawConfig); // Autodestrucción
-        }
-    }
+            Files.writeString(secureFile, base64Payload, StandardCharsets.UTF_8);
+            System.out.println("[CLIENTE-SECURITY] Archivo criptográfico 'network.enc' generado en el entorno profundo.");
 
-    private void loadEncryptedConfig(Path path) throws Exception {
-        byte[] ciphertext = Files.readAllBytes(path);
-        byte[] iv = new byte[16];
-        byte[] encryptedData = new byte[ciphertext.length - 16];
-        System.arraycopy(ciphertext, 0, iv, 0, 16);
-        System.arraycopy(ciphertext, 16, encryptedData, 0, encryptedData.length);
-
-        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
-        SecretKeySpec keySpec = new SecretKeySpec(AES_KEY, "AES");
-        IvParameterSpec ivSpec = new IvParameterSpec(iv);
-        cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
-
-        byte[] decrypted = cipher.doFinal(encryptedData);
-        String dataStr = new String(decrypted, StandardCharsets.UTF_8);
-        String[] tokens = dataStr.split(";");
-
-        this.serverIp = tokens[0];
-        this.serverPort = Integer.parseInt(tokens[1]);
-        this.apiToken = tokens[2];
-    }
-
-    private void saveEncryptedConfig(Path path) throws Exception {
-        String dataStr = this.serverIp + ";" + this.serverPort + ";" + this.apiToken;
-        byte[] plainBytes = dataStr.getBytes(StandardCharsets.UTF_8);
-
-        byte[] iv = new byte[16];
-        SecureRandom.getInstanceStrong().nextBytes(iv);
-
-        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
-        SecretKeySpec keySpec = new SecretKeySpec(AES_KEY, "AES");
-        IvParameterSpec ivSpec = new IvParameterSpec(iv);
-        cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec);
-
-        byte[] encryptedData = cipher.doFinal(plainBytes);
-        byte[] finalPayload = new byte[16 + encryptedData.length];
-        System.arraycopy(iv, 0, finalPayload, 0, 16);
-        System.arraycopy(encryptedData, 0, finalPayload, 16, encryptedData.length);
-
-        Files.write(path, finalPayload, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-    }
-
-    private void applySystemAttributes(Path path) {
-        if (OS.contains("win")) {
             try {
-                // Aplica atributos de oculto y sistema en Windows
-                ProcessBuilder pb = new ProcessBuilder("cmd.exe", "/c", "attrib +h +s \"" + path.toAbsolutePath() + "\"");
-                pb.start().waitFor();
-            } catch (Exception ignored) {
-                // Log de seguridad silencioso
+                Files.delete(rawConfig);
+                System.out.println("[CLIENTE-SECURITY] CUMPLIMIENTO: Archivo plano temporal 'server.vaconect' ELIMINADO Y BORRADO de la raíz para evitar fugas.");
+            } catch (IOException e) {
+                System.err.println("[ALERTA SEGURIDAD] No se pudo ejecutar el borrado físico del plano: " + e.getMessage());
             }
         }
     }
 
     public String getServerIp() { return serverIp; }
     public int getServerPort() { return serverPort; }
-    public String getApiToken() { return apiToken; }
+    public String getApiToken() { return serverToken; }
 }
