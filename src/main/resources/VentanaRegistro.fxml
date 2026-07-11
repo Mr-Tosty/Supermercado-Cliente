@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.canvas.Canvas?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.TableColumn?>
+<?import javafx.scene.control.TableView?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.text.Font?>
+
+<BorderPane prefHeight="650.0" prefWidth="950.0" style="-fx-background-color: #F4F6F9;" xmlns="http://javafx.com/javafx/25" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.vortexaronix.supermarket.frontend.VentanaRegistroController">
+   <top>
+      <HBox alignment="CENTER_LEFT" spacing="20.0" style="-fx-background-color: #1A252F; -fx-padding: 15;" BorderPane.alignment="CENTER">
+         <children>
+            <Label text="SuperMarket Manager Pro - Panel de Registro" textFill="WHITE">
+               <font>
+                  <Font name="System Bold" size="18.0" />
+               </font>
+            </Label>
+            <HBox alignment="CENTER_RIGHT" HBox.hgrow="ALWAYS">
+               <children>
+                  <Label fx:id="lblContadorDesperdicio" style="-fx-background-color: #34495E; -fx-padding: 8 15 8 15; -fx-background-radius: 5;" text="Planilla de Hoja: 0 / 9" textFill="WHITE">
+                     <font>
+                        <Font name="System Bold" size="14.0" />
+                     </font>
+                  </Label>
+               </children>
+            </HBox>
+         </children>
+      </HBox>
+   </top>
+   <center>
+      <VBox spacing="15.0" BorderPane.alignment="CENTER">
+         <children>
+            <TableView fx:id="tblProductos" editable="true" prefHeight="320.0" style="-fx-box-background: #FFFFFF;">
+              <columns>
+                <TableColumn fx:id="colNombre" prefWidth="180.0" text="Nombre" />
+                <TableColumn fx:id="colDescripcion" prefWidth="220.0" text="Descripción" />
+                  <TableColumn fx:id="colPrecio" prefWidth="100.0" text="Precio ($)" />
+                  <TableColumn fx:id="colCodigo" prefWidth="160.0" text="Código (12 Dígitos)" />
+                  <TableColumn fx:id="colStock" prefWidth="100.0" text="Stock Inicial" />
+              </columns>
+            </TableView>
+            <HBox spacing="15.0" style="-fx-background-color: #FFFFFF; -fx-padding: 15; -fx-background-radius: 5; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.1), 10, 0, 0, 0);">
+               <children>
+                  <VBox spacing="8.0" HBox.hgrow="ALWAYS">
+                     <children>
+                        <Label text="Formulario de Fila Seleccionada" textFill="#2C3E50">
+                           <font>
+                              <Font name="System Bold" size="13.0" />
+                           </font>
+                        </Label>
+                        <HBox spacing="10.0">
+                           <children>
+                              <TextField fx:id="txtNombre" promptText="Nombre Producto" HBox.hgrow="ALWAYS" />
+                              <TextField fx:id="txtDescripcion" promptText="Descripción Breve" HBox.hgrow="ALWAYS" />
+                              <TextField fx:id="txtPrecio" prefWidth="90.0" promptText="Precio" />
+                              <TextField fx:id="txtCodigo" prefWidth="150.0" promptText="Código de Barras" />
+                              <TextField fx:id="txtStock" prefWidth="80.0" promptText="Stock" />
+                           </children>
+                        </HBox>
+                        <HBox alignment="CENTER_LEFT" spacing="10.0">
+                           <children>
+                              <Button fx:id="btnRandomCode" mnemonicParsing="false" onAction="#handleGenerateCryptoCode" style="-fx-background-color: #8E44AD; -fx-text-fill: white;" text="Generar Código Seguro (12D)" />
+                              <Label fx:id="lblAlertaCam" text="Estado Cámara: Monitoreando..." textFill="#7F8C8D" />
+                           </children>
+                           <VBox.margin>
+                              <Insets top="5.0" />
+                           </VBox.margin>
+                        </HBox>
+                     </children>
+                  </VBox>
+                  <VBox alignment="CENTER" prefWidth="160.0" spacing="5.0" style="-fx-border-color: #BDC3C7; -fx-border-width: 1; -fx-padding: 5;">
+                     <children>
+                        <Label text="Previsualización QR / Canvas">
+                           <font>
+                              <Font size="10.0" />
+                           </font>
+                        </Label>
+                        <Canvas fx:id="canvasPreview" height="90.0" width="140.0" />
+                     </children>
+                  </VBox>
+               </children>
+            </HBox>
+         </children>
+         <padding>
+            <Insets bottom="15.0" left="15.0" right="15.0" top="15.0" />
+         </padding>
+      </VBox>
+   </center>
+   <bottom>
+      <HBox alignment="CENTER_RIGHT" spacing="15.0" style="-fx-background-color: #EAEDED; -fx-padding: 15;" BorderPane.alignment="CENTER">
+         <children>
+            <Label fx:id="lblStatusNet" text="Red: LAN Activa" textFill="#27AE60" HBox.hgrow="ALWAYS" />
+            <Button fx:id="btnAgregarFila" mnemonicParsing="false" onAction="#handleAgregarFila" style="-fx-background-color: #3498DB; -fx-text-fill: white;" text="Añadir Nueva Fila vacía" />
+            <Button fx:id="btnImprimir" disable="true" mnemonicParsing="false" onAction="#handleImprimirYEnviar" style="-fx-background-color: #2ECC71; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 25 8 25;" text="Imprimir Hoja Completa (9/9) y Sincronizar" />
+         </children>
+      </HBox>
+   </bottom>
+</BorderPane>
