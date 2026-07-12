@@ -12,7 +12,9 @@ import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
+import javafx.stage.Modality;
 import javafx.stage.Stage;
+import javafx.stage.StageStyle;
 
 public class Inicio extends Application {
 
@@ -26,6 +28,10 @@ public class Inicio extends Application {
         public static String token;
     }
 
+    /**
+     * Carga y parsea de forma estricta el archivo plano de configuración externa 'server.vaconect'.
+     * Formato requerido: IP,PUERTO,TOKEN (Ej: 192.168.1.74,8080,VORTEX-PROD-2026-TOKEN)
+     */
     private boolean cargarConfiguracion() {
         Path configPath = Paths.get("server.vaconect");
         if (!Files.exists(configPath)) {
@@ -70,6 +76,7 @@ public class Inicio extends Application {
         if (!cargarConfiguracion()) {
             return;
         }
+        
         try {
             SecurityConfigLoader.getInstance().initializeConfiguration();
             ContextoConfiguracion.ip = SecurityConfigLoader.getInstance().getServerIp();
@@ -80,19 +87,39 @@ public class Inicio extends Application {
                 throw new IllegalStateException("Los parámetros de red descifrados contienen valores nulos o inválidos.");
             }
 
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/Principal.fxml"));
+            // 3. CARGA DEL ACCESO DE SEGURIDAD MODAL (PANTALLA DE BLOQUEO DE TI)
+            FXMLLoader lockLoader = new FXMLLoader(getClass().getResource("/fxml/PantallaBloqueo.fxml"));
+            Parent lockRoot = lockLoader.load();
+            
+            Stage lockStage = new Stage();
+            lockStage.initOwner(stage);
+            lockStage.initModality(Modality.APPLICATION_MODAL);
+            lockStage.initStyle(StageStyle.UNDECORATED);
+            lockStage.setTitle("Acceso Restringido - TI Perimetral");
+            lockStage.setScene(new Scene(lockRoot));
+            
+            lockStage.setOnCloseRequest(e -> {
+                e.consume();
+                shutdownSequence();
+            });
+
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/VentanaRegistro.fxml"));
             Parent root = loader.load();
 
             Scene scene = new Scene(root);
             stage.setTitle("Sistema de Gestión Comercial - Supermercado (VORTEX-PROD)");
             stage.setScene(scene);
-
             stage.setOnCloseRequest(event -> {
                 event.consume();
                 shutdownSequence();
             });
+            
+            System.out.println("[PERÍMETRO] Bloqueo gráfico activo. Requiere Token Maestro de TI...");
+            lockStage.showAndWait(); 
 
             stage.show();
+            System.out.println("[CLIENTE] Interfaz comercial de registro liberada con éxito en la LAN.");
+
         } catch (IOException | NullPointerException e) {
             System.err.println("[CRÍTICO] Fallo en el arranque de infraestructura: " + e.getMessage());
             mostrarErrorFatal("Detalle del error: " + e.getLocalizedMessage());
@@ -113,9 +140,13 @@ public class Inicio extends Application {
         alert.setHeaderText("Carga de Aplicación Cancelada");
         alert.setContentText(mensaje);
         alert.showAndWait();
-        System.exit(1);
+        shutdownSequence();
     }
 
+    /**
+     * Asegura que al cerrar la app se maten por completo todos los hilos
+     * de red locales y de hardware en segundo plano de manera limpia.
+     */
     private void shutdownSequence() {
         System.out.println("[CLIENTE] Cerrando recursos de red, sockets LAN y hardware...");
         Platform.exit();
