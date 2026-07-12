@@ -23,6 +23,7 @@ public class Inicio extends Application {
     private String tokenSeguridad;
 
     public static class ContextoConfiguracion {
+
         public static String ip;
         public static int puerto;
         public static String token;
@@ -34,30 +35,37 @@ public class Inicio extends Application {
             mostrarErrorFatal("Archivo de conexión crítica 'server.vaconect' no encontrado en la raíz: " + configPath.toAbsolutePath());
             return false;
         }
-        try (BufferedReader reader = Files.newBufferedReader(configPath)) {
-            String linea = reader.readLine();
-            if (linea == null || linea.strip().isEmpty()) {
-                mostrarErrorFatal("El archivo 'server.vaconect' está vacío.");
+
+        try (BufferedReader reader = Files.newBufferedReader(configPath, java.nio.charset.StandardCharsets.UTF_8)) {
+            java.util.Properties propiedadesConfig = new java.util.Properties();
+            propiedadesConfig.load(reader);
+            
+            this.servidorIp = propiedadesConfig.getProperty("server.ip");
+            String puertoStr = propiedadesConfig.getProperty("server.port");
+            this.tokenSeguridad = propiedadesConfig.getProperty("server.token");
+
+            if (this.servidorIp == null || puertoStr == null || this.tokenSeguridad == null) {
+                mostrarErrorFatal("Formato inválido en 'server.vaconect'. Se esperaban las propiedades: server.ip, server.port y server.token");
                 return false;
             }
-            String[] partes = linea.split(",");
-            if (partes.length < 3) {
-                mostrarErrorFatal("Formato inválido en 'server.vaconect'. Se esperaba: IP,PUERTO,TOKEN");
-                return false;
-            }
-            this.servidorIp = partes[0].strip();
-            this.servidorPuerto = Integer.parseInt(partes[1].strip());
-            this.tokenSeguridad = partes[2].strip();
+
+            this.servidorIp = this.servidorIp.strip();
+            this.servidorPuerto = Integer.parseInt(puertoStr.strip());
+            this.tokenSeguridad = this.tokenSeguridad.strip();
 
             if (this.servidorIp.isEmpty() || this.tokenSeguridad.isEmpty()) {
                 mostrarErrorFatal("La IP o el Token de seguridad no pueden estar vacíos.");
                 return false;
             }
+
             ContextoConfiguracion.ip = this.servidorIp;
             ContextoConfiguracion.puerto = this.servidorPuerto;
             ContextoConfiguracion.token = this.tokenSeguridad;
-            System.out.printf("[CONFIG] Conexión establecida exitosamente -> IP: %s | Puerto: %d%n", ContextoConfiguracion.ip, ContextoConfiguracion.puerto);
+
+            System.out.printf("[CONFIG] Conexión establecida exitosamente -> IP: %s | Puerto: %d%n",
+                    ContextoConfiguracion.ip, ContextoConfiguracion.puerto);
             return true;
+
         } catch (IOException e) {
             mostrarErrorFatal("Error de Entrada/Salida al leer 'server.vaconect': " + e.getMessage());
             return false;
@@ -72,7 +80,7 @@ public class Inicio extends Application {
         if (!cargarConfiguracion()) {
             return;
         }
-        
+
         try {
             SecurityConfigLoader.getInstance().initializeConfiguration();
             ContextoConfiguracion.ip = SecurityConfigLoader.getInstance().getServerIp();
@@ -82,17 +90,17 @@ public class Inicio extends Application {
             if (ContextoConfiguracion.ip == null || ContextoConfiguracion.token == null || ContextoConfiguracion.puerto <= 0) {
                 throw new IllegalStateException("Los parámetros de red descifrados contienen valores nulos o inválidos.");
             }
-            
+
             FXMLLoader lockLoader = new FXMLLoader(getClass().getResource("/fxml/PantallaBloqueo.fxml"));
             Parent lockRoot = lockLoader.load();
-            
+
             Stage lockStage = new Stage();
             lockStage.initOwner(stage);
             lockStage.initModality(Modality.APPLICATION_MODAL);
             lockStage.initStyle(StageStyle.UNDECORATED);
             lockStage.setTitle("Acceso Restringido - TI Perimetral");
             lockStage.setScene(new Scene(lockRoot));
-            
+
             lockStage.setOnCloseRequest(e -> {
                 e.consume();
                 shutdownSequence();
@@ -111,7 +119,7 @@ public class Inicio extends Application {
             });
 
             System.out.println("[PERÍMETRO] Bloqueo gráfico activo. Requiere Token Maestro de TI...");
-            lockStage.showAndWait(); 
+            lockStage.showAndWait();
 
             stage.show();
             System.out.println("[CLIENTE] Interfaz comercial de registro liberada con éxito en la LAN.");

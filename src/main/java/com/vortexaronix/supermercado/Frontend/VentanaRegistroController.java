@@ -49,6 +49,7 @@ import javafx.scene.image.WritableImage;
  * ----------------------------------------------------------------------------
  */
 public class VentanaRegistroController {
+
     @FXML
     private TextField txtNombre;
     @FXML
@@ -66,12 +67,14 @@ public class VentanaRegistroController {
     private Label lblAlertaCam;
     @FXML
     private Label lblStatusNet;
-    
+
     @FXML
     private Button btnImprimir;
     @FXML
+    @SuppressWarnings("unused")
     private Button btnRandomCode;
     @FXML
+    @SuppressWarnings("unused")
     private Button btnAgregarFila;
     @FXML
     private Canvas canvasPreview;
@@ -90,11 +93,12 @@ public class VentanaRegistroController {
     private TableColumn<ProductoFX, String> colCodigo;
     @FXML
     private TableColumn<ProductoFX, Integer> colStock;
-    
+
     private final int CAPACIDAD_HOJA = 9;
     private int registrosValidados = 0;
     private boolean filaActualContabilizada = false;
     private final ObservableList<ProductoFX> listaTablaMemoria = FXCollections.observableArrayList();
+    private final ApiClient apiClient = new ApiClient();
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
@@ -125,6 +129,12 @@ public class VentanaRegistroController {
         txtCodigo.textProperty().addListener(detectorCambiosPlanilla);
         txtStock.textProperty().addListener(detectorCambiosPlanilla);
 
+        btnRandomCode.setAccessibleText("Genera un código de barras criptográfico de 12 dígitos de forma segura.");
+        btnAgregarFila.setAccessibleText("Indexa una nueva fila vacía en la planilla de control de hardware.");
+
+        btnRandomCode.setStyle("-fx-background-color: #8E44AD; -fx-text-fill: white; -fx-cursor: hand;");
+        btnAgregarFila.setStyle("-fx-background-color: #3498DB; -fx-text-fill: white; -fx-cursor: hand;");
+
         btnImprimir.setDisable(true);
         lblContadorDesperdicio.setText("Planilla de Hoja: 0 / " + CAPACIDAD_HOJA);
         txtCodigo.setEditable(true);
@@ -132,7 +142,7 @@ public class VentanaRegistroController {
 
         Thread.startVirtualThread(this::bucleProcesamientoCamaraHardware);
         this.servicioImpresora = new ServicioImpresoraPlanilla(
-            txtNombre, txtDescripcion, txtPrecio, txtCodigo, txtStock, lblContadorDesperdicio, btnImprimir, canvasPreview
+                txtNombre, txtDescripcion, txtPrecio, txtCodigo, txtStock, lblContadorDesperdicio, btnImprimir, canvasPreview
         );
     }
 
@@ -147,19 +157,23 @@ public class VentanaRegistroController {
             try {
                 BufferedImage frame = new BufferedImage(640, 480, BufferedImage.TYPE_INT_RGB);
 
-                String codigoDetectado = decodificarLumaLineaCentral(frame);
-                long ahora = System.currentTimeMillis();
+                if (frame != null) {
+                    String codigoDetectado = decodificarLumaLineaCentral(frame);
+                    long ahora = System.currentTimeMillis();
+                    if (codigoDetectado != null && !codigoDetectado.trim().isEmpty() && (ahora - ultimoEscaneoExitoso > 2000)) {
+                        ultimoEscaneoExitoso = ahora;
+                        String codigoFinal = codigoDetectado.trim();
 
-                if (codigoDetectado != null && (ahora - ultimoEscaneoExitoso > 2000)) {
-                    ultimoEscaneoExitoso = ahora;
-                    String finalCodigo = codigoDetectado;
-                    Platform.runLater(() -> handleEscaneo(finalCodigo));
+                        Platform.runLater(() -> handleEscaneo(codigoFinal));
+                    }
+
+                    javafx.scene.image.WritableImage fxImage = convertirAJavaFXImage(frame);
+                    Platform.runLater(() -> webcamImageView.setImage(fxImage));
                 }
-
-                WritableImage fxImage = convertirAJavaFXImage(frame);
-                Platform.runLater(() -> webcamImageView.setImage(fxImage));
-
                 Thread.sleep(33);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                camaraHardwareActiva = false;
             } catch (Exception ignored) {
             }
         }
@@ -191,7 +205,7 @@ public class VentanaRegistroController {
         if (bImage == null) {
             return null;
         }
-        WritableImage wr = new WritableImage(bImage.getWidth(), bImage.getHeight());
+        WritableImage wr = new javafx.scene.image.WritableImage(bImage.getWidth(), bImage.getHeight());
         PixelWriter pw = wr.getPixelWriter();
         for (int x = 0; x < bImage.getWidth(); x++) {
             for (int y = 0; y < bImage.getHeight(); y++) {
@@ -244,6 +258,40 @@ public class VentanaRegistroController {
             }
         });
     }
+    
+    /**
+     * Envía la estructura JSON hacia el endpoint híbrido de Spring Boot.
+     * Ubicado exactamente debajo de handleEscaneo compartiendo la misma infraestructura de red.
+     */
+    public void enviarRegistroHibrido(String jsonPayload) {
+        if (jsonPayload == null || jsonPayload.strip().isEmpty()) {
+            return;
+        }
+
+        // CUMPLIMIENTO: Uso nativo de Virtual Threads en paralelo para envíos concurrentes sin lag
+        Thread.startVirtualThread(() -> {
+            try {
+                // Apunta al endpoint /generate-hibrido que administra el reciclaje caótico de MariaDB
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(urlBaseServer + "/generate-hibrido"))
+                        .header("Content-Type", "application/json")
+                        .header("Authorization", "Bearer " + SecurityConfigLoader.getInstance().getApiToken())
+                        .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
+                        .build();
+
+                // Ejecución síncrona dentro del hilo virtual en segundo plano (Evita colisiones de buffers)
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                
+                if (response.statusCode() == 200 || response.statusCode() == 201) {
+                    System.out.println("[LAN-POST] Sincronización comercial de lote completada con éxito.");
+                } else {
+                    System.err.println("[LAN-ERROR] El servidor rechazó la inyección de stock: Status " + response.statusCode());
+                }
+            } catch (Exception e) {
+                System.err.println("[LAN-ERROR] Fallo crítico de hardware en canal de datos paralelo: " + e.getMessage());
+            }
+        });
+    }
 
     private void evaluarYAcumularPlanillaDinamica() {
         boolean camposValidos = !txtNombre.getText().isBlank()
@@ -281,34 +329,22 @@ public class VentanaRegistroController {
     public void handleAgregarFila(ActionEvent event) {
         if (validarCampos()) {
             ProductoFX productoFila = new ProductoFX(
-                    txtCodigo.getText().trim(), txtNombre.getText().trim(),
-                    txtDescripcion.getText().trim(), Double.parseDouble(txtPrecio.getText().trim()),
+                    txtCodigo.getText().trim(),
+                    txtNombre.getText().trim(),
+                    txtDescripcion.getText().trim(),
+                    Double.parseDouble(txtPrecio.getText().trim()),
                     Integer.parseInt(txtStock.getText().trim())
             );
             listaTablaMemoria.add(productoFila);
             limpiarCamposFormulario();
             filaActualContabilizada = false;
+            lblAlertaCam.setText("Estado: Fila indexada. Nueva celda abierta para monitoreo.");
         }
         servicioImpresora.registrarAccionAgregarFila();
-        lblAlertaCam.setText("Estado: Fila indexada. Nueva celda abierta para monitoreo.");
     }
 
     @FXML
-    private void handleGenerateCryptoCode(ActionEvent event) {
-        SecureRandom random = new SecureRandom();
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < 12; i++) {
-            sb.append(random.nextInt(10));
-        }
-        String codigoAleatorio = sb.toString();
-
-        txtCodigo.setText(codigoAleatorio);
-        txtCodigo.setEditable(false);
-        CanvasGenerator.renderCodeMarkup(canvasPreview, codigoAleatorio);
-        lblAlertaCam.setText("Estado: Código Seguro 12D creado.");
-    }
-
-    @FXML
+    @SuppressWarnings("unused")
     private void handleImprimirYEnviar(ActionEvent event) {
         if (registrosValidados != CAPACIDAD_HOJA) {
             return;
@@ -321,10 +357,10 @@ public class VentanaRegistroController {
             );
             despacharPostConcurrenteLan(jsonPayload);
         }
-        
+
         servicioImpresora.ejecutarImpresionYEnvioConcurrente();
         lblAlertaCam.setText("Estado: Planilla impresa y sincronizada.");
-        
+
         registrosValidados = 0;
         filaActualContabilizada = false;
         listaTablaMemoria.clear();
