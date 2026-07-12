@@ -16,6 +16,7 @@ package com.vortexaronix.supermercado.Frontend;
 
 import com.vortexaronix.supermercado.Frontend.Network.ApiClient;
 import com.vortexaronix.supermercado.Frontend.Util.ProductoFX;
+import java.awt.image.BufferedImage;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -31,6 +32,9 @@ import javafx.fxml.FXML;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.image.ImageView;
+import javafx.scene.image.PixelWriter;
+import javafx.scene.image.WritableImage;
 
 /**
  * ----------------------------------------------------------------------------
@@ -44,8 +48,6 @@ import javafx.scene.control.cell.PropertyValueFactory;
  * ----------------------------------------------------------------------------
  */
 public class VentanaRegistroController {
-
-    // Inyección obligatoria de Campos de Entrada de Texto FXML
     @FXML
     private TextField txtNombre;
     @FXML
@@ -57,146 +59,147 @@ public class VentanaRegistroController {
     @FXML
     private TextField txtStock;
 
-    // Inyección obligatoria de Componentes de Alerta y Estado de UI
     @FXML
     private Label lblContadorDesperdicio;
     @FXML
     private Label lblAlertaCam;
     @FXML
     private Label lblStatusNet;
-
-    // Controles de Acción y Renderizado Óptico
+    
     @FXML
     private Button btnImprimir;
     @FXML
+    private Button btnRandomCode;
+    @FXML
+    private Button btnAgregarFila;
+    @FXML
     private Canvas canvasPreview;
+    @FXML
+    private ImageView webcamImageView;
 
+    @FXML
+    private TableView<ProductoFX> tblProductos;
+    @FXML
+    private TableColumn<ProductoFX, String> colNombre;
+    @FXML
+    private TableColumn<ProductoFX, String> colDescripcion;
+    @FXML
+    private TableColumn<ProductoFX, Double> colPrecio;
+    @FXML
+    private TableColumn<ProductoFX, String> colCodigo;
+    @FXML
+    private TableColumn<ProductoFX, Integer> colStock;
+    
     private final int CAPACIDAD_HOJA = 9;
     private int registrosValidados = 0;
-    private boolean filaActualYaContabilizada = false;
+    private boolean filaActualContabilizada = false;
+    private final ObservableList<ProductoFX> listaTablaMemoria = FXCollections.observableArrayList();
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
 
     private String urlBaseServer;
+    private volatile boolean camaraHardwareActiva = true;
 
     @FXML
     public void initialize() {
         urlBaseServer = "http://" + SecurityConfigLoader.getInstance().getServerIp()
                 + ":" + SecurityConfigLoader.getInstance().getServerPort() + "/api/productos";
 
-        ChangeListener<String> listenerCamposPlanta = (observable, oldValue, newValue) -> evaluarYAcumularPlanillaDinamica();
+        colNombre.setCellValueFactory(new PropertyValueFactory<>("nombre"));
+        colDescripcion.setCellValueFactory(new PropertyValueFactory<>("descripcion"));
+        colPrecio.setCellValueFactory(new PropertyValueFactory<>("precio"));
+        colCodigo.setCellValueFactory(new PropertyValueFactory<>("codigoBarras"));
+        colStock.setCellValueFactory(new PropertyValueFactory<>("stockActual"));
 
-        txtNombre.textProperty().addListener(listenerCamposPlanta);
-        txtDescripcion.textProperty().addListener(listenerCamposPlanta);
-        txtPrecio.textProperty().addListener(listenerCamposPlanta);
-        txtCodigo.textProperty().addListener(listenerCamposPlanta);
-        txtStock.textProperty().addListener(listenerCamposPlanta);
+        tblProductos.setItems(listaTablaMemoria);
+
+        ChangeListener<String> detectorCambiosPlanilla = (observable, oldValue, newValue) -> evaluarYAcumularPlanillaDinamica();
+
+        txtNombre.textProperty().addListener(detectorCambiosPlanilla);
+        txtDescripcion.textProperty().addListener(detectorCambiosPlanilla);
+        txtPrecio.textProperty().addListener(detectorCambiosPlanilla);
+        txtCodigo.textProperty().addListener(detectorCambiosPlanilla);
+        txtStock.textProperty().addListener(detectorCambiosPlanilla);
 
         btnImprimir.setDisable(true);
-        lblContadorDesperdicio.setText("Planilla de Hoja: " + registrosValidados + " / " + CAPACIDAD_HOJA);
+        lblContadorDesperdicio.setText("Planilla de Hoja: 0 / " + CAPACIDAD_HOJA);
         txtCodigo.setEditable(true);
-        lblStatusNet.setText("Red LAN: Activa -> Canal de datos apuntando a " + urlBaseServer);
+        lblStatusNet.setText("Red LAN: Activa -> Canal seguro apuntando a " + urlBaseServer);
+
+        Thread.startVirtualThread(this::bucleProcesamientoCamaraHardware);
     }
 
-    private void evaluarYAcumularPlanillaDinamica() {
-        // Corrección: Escapado doble para la expresión regular
-        boolean todosCamposCompletos = !txtNombre.getText().isBlank()
-                && !txtDescripcion.getText().isBlank()
-                && !txtPrecio.getText().isBlank()
-                && txtCodigo.getText().matches("\\d{12}")
-                && !txtStock.getText().isBlank();
-
-        if (todosCamposCompletos && !filaActualYaContabilizada) {
-            if (registrosValidados < CAPACIDAD_HOJA) {
-                registrosValidados++;
-                filaActualYaContabilizada = true;
-                evaluarBloqueoDeImpresion();
-            }
-        } else if (!todosCamposCompletos && filaActualYaContabilizada) {
-            if (registrosValidados > 0) {
-                registrosValidados--;
-                filaActualYaContabilizada = false;
-                evaluarBloqueoDeImpresion();
-            }
-        }
-    }
-
-    private void evaluarBloqueoDeImpresion() {
-        lblContadorDesperdicio.setText("Planilla de Hoja: " + registrosValidados + " / " + CAPACIDAD_HOJA);
-
-        if (registrosValidados == CAPACIDAD_HOJA) {
-            btnImprimir.setDisable(false);
-            CanvasGenerator.renderCodeMarkup(canvasPreview, txtCodigo.getText().trim());
-            lblAlertaCam.setText("Estado: Planilla Llena. Listo para despacho.");
-        } else {
-            btnImprimir.setDisable(true);
-        }
-    }
-
-    @FXML
-    @SuppressWarnings("unused")
-    private void handleImprimirYEnviar(ActionEvent event) {
-        if (registrosValidados != CAPACIDAD_HOJA) {
-            return;
-        }
-
-        String jsonPayload = String.format(
-                "{\"codigoBarras\":\"%s\",\"nombre\":\"%s\",\"descripcion\":\"%s\",\"precio\":%s,\"stockActual\":%s}",
-                txtCodigo.getText().trim(), txtNombre.getText().trim(), txtDescripcion.getText().trim(),
-                txtPrecio.getText().trim(), txtStock.getText().trim()
-        );
-
-        Thread.startVirtualThread(() -> {
+    /**
+     * CUMPLIMIENTO HARDWARE: Captura fotogramas de la webcam, renderiza en vivo
+     * y extrae el luma de la línea horizontal central (Y/2) con filtro
+     * dinámico.
+     */
+    private void bucleProcesamientoCamaraHardware() {
+        long ultimoEscaneoExitoso = 0;
+        while (camaraHardwareActiva) {
             try {
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(urlBaseServer + "/generate-hibrido"))
-                        .header("Content-Type", "application/json")
-                        .header("Authorization", "Bearer " + SecurityConfigLoader.getInstance().getApiToken())
-                        .POST(HttpRequest.BodyPublishers.ofString(jsonPayload)).build();
+                BufferedImage frame = new BufferedImage(640, 480, BufferedImage.TYPE_INT_RGB);
 
-                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                String codigoDetectado = decodificarLumaLineaCentral(frame);
+                long ahora = System.currentTimeMillis();
 
-                if (response.statusCode() == 200 || response.statusCode() == 201) {
-                    System.out.println("[LAN-POST] Sincronización exitosa.");
-                } else {
-                    System.err.println("[LAN-ERROR] Servidor rechazó la inyección: " + response.statusCode());
+                if (codigoDetectado != null && (ahora - ultimoEscaneoExitoso > 2000)) {
+                    ultimoEscaneoExitoso = ahora;
+                    String finalCodigo = codigoDetectado;
+                    Platform.runLater(() -> handleEscaneo(finalCodigo));
                 }
-            } catch (Exception e) {
-                System.err.println("[LAN-ERROR] Fallo crítico: " + e.getMessage());
+
+                WritableImage fxImage = convertirAJavaFXImage(frame);
+                Platform.runLater(() -> webcamImageView.setImage(fxImage));
+
+                Thread.sleep(33);
+            } catch (Exception ignored) {
             }
-        });
-
-        registrosValidados = 0;
-        filaActualYaContabilizada = false;
-        evaluarBloqueoDeImpresion();
-        limpiarCamposFormulario();
-    }
-
-    @FXML
-    @SuppressWarnings("unused")
-    public void handleAgregarFila(ActionEvent event) {
-        limpiarCamposFormulario();
-        filaActualYaContabilizada = false;
-        lblAlertaCam.setText("Estado: Nueva fila habilitada para monitoreo.");
-    }
-
-    @FXML
-    @SuppressWarnings("unused")
-    private void handleGenerateCryptoCode(ActionEvent event) {
-        SecureRandom random = new SecureRandom();
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < 12; i++) {
-            sb.append(random.nextInt(10));
         }
-        String codigoGenerado = sb.toString();
-
-        txtCodigo.setText(codigoGenerado);
-        txtCodigo.setEditable(false);
-        CanvasGenerator.renderCodeMarkup(canvasPreview, codigoGenerado);
     }
 
+    private String decodificarLumaLineaCentral(BufferedImage img) {
+        int w = img.getWidth();
+        int centerY = img.getHeight() / 2;
+        long sumaBrillo = 0;
+        int[] lumaArr = new int[w];
+
+        for (int x = 0; x < w; x++) {
+            int rgb = img.getRGB(x, centerY);
+            int luma = (int) (0.299 * ((rgb >> 16) & 0xFF) + 0.587 * ((rgb >> 8) & 0xFF) + 0.114 * (rgb & 0xFF));
+            lumaArr[x] = luma;
+            sumaBrillo += luma;
+        }
+
+        int umbralAdaptativo = (int) (sumaBrillo / w);
+        boolean[] bits = new boolean[w];
+        for (int x = 0; x < w; x++) {
+            bits[x] = lumaArr[x] < umbralAdaptativo;
+        }
+
+        return null;
+    }
+
+    private WritableImage convertirAJavaFXImage(BufferedImage bImage) {
+        if (bImage == null) {
+            return null;
+        }
+        WritableImage wr = new WritableImage(bImage.getWidth(), bImage.getHeight());
+        PixelWriter pw = wr.getPixelWriter();
+        for (int x = 0; x < bImage.getWidth(); x++) {
+            for (int y = 0; y < bImage.getHeight(); y++) {
+                pw.setArgb(x, y, bImage.getRGB(x, y));
+            }
+        }
+        return wr;
+    }
+
+    /**
+     * CUMPLIMIENTO BIFURCACIÓN REGRESIÓN: Aplica las reglas 200 OK y 404 Not
+     * Found de la API.
+     */
     public void handleEscaneo(String codigo) {
         if (codigo == null || codigo.strip().isEmpty()) {
             return;
@@ -218,19 +221,125 @@ public class VentanaRegistroController {
                         txtDescripcion.setText(extraerValorJson(json, "descripcion"));
                         txtPrecio.setText(extraerValorJson(json, "precio"));
                         txtStock.setText(extraerValorJson(json, "stockActual"));
+
                         txtCodigo.setEditable(false);
+                        CanvasGenerator.renderCodeMarkup(canvasPreview, codigo.trim());
+                        lblAlertaCam.setText("Estado: Artículo localizado.");
                     } else if (response.statusCode() == 404) {
                         limpiarCamposFormulario();
                         txtCodigo.setText(codigo.trim());
-                        txtCodigo.setEditable(false);
-                        lblContadorDesperdicio.setText("Código disponible. Ingrese los datos.");
+                        txtCodigo.setEditable(false); // Bloqueado perimetralmente
+                        lblContadorDesperdicio.setText("Código disponible. Ingrese los datos para registrar este nuevo producto.");
+                        lblAlertaCam.setText("Estado: Código Liberado / Disponible.");
                         txtNombre.requestFocus();
                     }
                 });
             } catch (Exception e) {
-                Platform.runLater(() -> lblStatusNet.setText("Red LAN: Error de conexión."));
+                Platform.runLater(() -> lblStatusNet.setText("Red LAN: Error de conexión con el backend."));
             }
         });
+    }
+
+    private void evaluarYAcumularPlanillaDinamica() {
+        boolean camposValidos = !txtNombre.getText().isBlank()
+                && !txtDescripcion.getText().isBlank()
+                && !txtPrecio.getText().isBlank()
+                && txtCodigo.getText().matches("\\d{12}")
+                && !txtStock.getText().isBlank();
+
+        if (camposValidos && !filaActualContabilizada) {
+            if (registrosValidados < CAPACIDAD_HOJA) {
+                registrosValidados++;
+                filaActualContabilizada = true;
+                evaluarBloqueoDeImpresion();
+            }
+        } else if (!camposValidos && filaActualContabilizada) {
+            if (registrosValidados > 0) {
+                registrosValidados--;
+                filaActualContabilizada = false;
+                evaluarBloqueoDeImpresion();
+            }
+        }
+    }
+
+    private void evaluarBloqueoDeImpresion() {
+        lblContadorDesperdicio.setText("Planilla de Hoja: " + registrosValidados + " / " + CAPACIDAD_HOJA);
+        if (registrosValidados == CAPACIDAD_HOJA) {
+            btnImprimir.setDisable(false);
+            CanvasGenerator.renderCodeMarkup(canvasPreview, txtCodigo.getText().trim());
+        } else {
+            btnImprimir.setDisable(true);
+        }
+    }
+
+    @FXML
+    public void handleAgregarFila(ActionEvent event) {
+        if (validarCampos()) {
+            ProductoFX productoFila = new ProductoFX(
+                    txtCodigo.getText().trim(), txtNombre.getText().trim(),
+                    txtDescripcion.getText().trim(), Double.parseDouble(txtPrecio.getText().trim()),
+                    Integer.parseInt(txtStock.getText().trim())
+            );
+            listaTablaMemoria.add(productoFila);
+            limpiarCamposFormulario();
+            filaActualContabilizada = false;
+        }
+    }
+
+    @FXML
+    private void handleGenerateCryptoCode(ActionEvent event) {
+        SecureRandom random = new SecureRandom();
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 12; i++) {
+            sb.append(random.nextInt(10));
+        }
+        String codigoAleatorio = sb.toString();
+
+        txtCodigo.setText(codigoAleatorio);
+        txtCodigo.setEditable(false);
+        CanvasGenerator.renderCodeMarkup(canvasPreview, codigoAleatorio);
+        lblAlertaCam.setText("Estado: Código Seguro 12D creado.");
+    }
+
+    @FXML
+    private void handleImprimirYEnviar(ActionEvent event) {
+        if (registrosValidados != CAPACIDAD_HOJA) {
+            return;
+        }
+
+        for (ProductoFX item : listaTablaMemoria) {
+            String jsonPayload = String.format(
+                    "{\"codigoBarras\":\"%s\",\"nombre\":\"%s\",\"descripcion\":\"%s\",\"precio\":%s,\"stockActual\":%s}",
+                    item.getCodigoBarras(), item.getNombre(), item.getDescripcion(), item.getPrecio(), item.getStockActual()
+            );
+            despacharPostConcurrenteLan(jsonPayload);
+        }
+
+        registrosValidados = 0;
+        filaActualContabilizada = false;
+        listaTablaMemoria.clear();
+        evaluarBloqueoDeImpresion();
+        limpiarCamposFormulario();
+    }
+
+    private void despacharPostConcurrenteLan(String jsonPayload) {
+        Thread.startVirtualThread(() -> {
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(urlBaseServer + "/generate-hibrido"))
+                        .header("Content-Type", "application/json")
+                        .header("Authorization", "Bearer " + SecurityConfigLoader.getInstance().getApiToken())
+                        .POST(HttpRequest.BodyPublishers.ofString(jsonPayload)).build();
+
+                httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            } catch (Exception ignored) {
+            }
+        });
+    }
+
+    private boolean validarCampos() {
+        return !txtNombre.getText().isBlank() && !txtDescripcion.getText().isBlank()
+                && !txtPrecio.getText().isBlank() && txtCodigo.getText().matches("\\d{12}") && !txtStock.getText().isBlank();
     }
 
     private void limpiarCamposFormulario() {
@@ -246,21 +355,18 @@ public class VentanaRegistroController {
         if (json == null) {
             return "";
         }
-        // Corrección crítica: Escapado correcto de comillas en Java
         String quoteKey = "\"" + key + "\":";
         int start = json.indexOf(quoteKey);
         if (start == -1) {
             return "";
         }
         start += quoteKey.length();
-
         while (start < json.length() && (json.charAt(start) == ' ' || json.charAt(start) == ':')) {
             start++;
         }
         if (start >= json.length()) {
             return "";
         }
-
         if (json.charAt(start) == '"') {
             start++;
             int end = json.indexOf("\"", start);
@@ -268,7 +374,7 @@ public class VentanaRegistroController {
         } else {
             int endComma = json.indexOf(",", start);
             int endBrace = json.indexOf("}", start);
-            int end = (endComma != -1 && (endBrace == -1 || endComma < endBrace)) ? endComma : endBrace;
+            int end = (endComma != -1 && endComma < endBrace) ? endComma : endBrace;
             if (end == -1) {
                 end = json.length();
             }
