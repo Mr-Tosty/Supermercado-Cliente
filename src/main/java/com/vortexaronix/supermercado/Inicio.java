@@ -28,10 +28,6 @@ public class Inicio extends Application {
         public static String token;
     }
 
-    /**
-     * Carga y parsea de forma estricta el archivo plano de configuración externa 'server.vaconect'.
-     * Formato requerido: IP,PUERTO,TOKEN (Ej: 192.168.1.74,8080,VORTEX-PROD-2026-TOKEN)
-     */
     private boolean cargarConfiguracion() {
         Path configPath = Paths.get("server.vaconect");
         if (!Files.exists(configPath)) {
@@ -86,8 +82,7 @@ public class Inicio extends Application {
             if (ContextoConfiguracion.ip == null || ContextoConfiguracion.token == null || ContextoConfiguracion.puerto <= 0) {
                 throw new IllegalStateException("Los parámetros de red descifrados contienen valores nulos o inválidos.");
             }
-
-            // 3. CARGA DEL ACCESO DE SEGURIDAD MODAL (PANTALLA DE BLOQUEO DE TI)
+            
             FXMLLoader lockLoader = new FXMLLoader(getClass().getResource("/fxml/PantallaBloqueo.fxml"));
             Parent lockRoot = lockLoader.load();
             
@@ -109,11 +104,12 @@ public class Inicio extends Application {
             Scene scene = new Scene(root);
             stage.setTitle("Sistema de Gestión Comercial - Supermercado (VORTEX-PROD)");
             stage.setScene(scene);
+
             stage.setOnCloseRequest(event -> {
                 event.consume();
                 shutdownSequence();
             });
-            
+
             System.out.println("[PERÍMETRO] Bloqueo gráfico activo. Requiere Token Maestro de TI...");
             lockStage.showAndWait(); 
 
@@ -143,16 +139,9 @@ public class Inicio extends Application {
         shutdownSequence();
     }
 
-    /**
-     * Asegura que al cerrar la app se maten por completo todos los hilos
-     * de red locales y de hardware en segundo plano de manera limpia.
-     */
     private void shutdownSequence() {
         System.out.println("[CLIENTE] Cerrando recursos de red, sockets LAN y hardware...");
         Platform.exit();
         System.exit(0);
     }
-
-    public static void main(String[] args) {
-        launch(args);
-}    }
+}
