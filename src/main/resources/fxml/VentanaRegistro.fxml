@@ -7,12 +7,15 @@
 <?import javafx.scene.control.TableColumn?>
 <?import javafx.scene.control.TableView?>
 <?import javafx.scene.control.TextField?>
+<!-- CUMPLIMIENTO HARDWARE: Inclusión mandatoria del componente visual para video -->
+<?import javafx.scene.image.ImageView?> 
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.text.Font?>
 
-<BorderPane prefHeight="650.0" prefWidth="950.0" style="-fx-background-color: #F4F6F9;" xmlns="http://javafx.com/javafx/25" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.vortexaronix.supermarket.frontend.VentanaRegistroController">
+<!-- CORRECCIÓN DE PAQUETE: Sincronizado a 'com.vortexaronix.supermercado.Frontend.VentanaRegistroController' -->
+<BorderPane prefHeight="700.0" prefWidth="1050.0" style="-fx-background-color: #F4F6F9;" xmlns="http://javafx.com/javafx/25" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.vortexaronix.supermercado.Frontend.VentanaRegistroController">
    <top>
       <HBox alignment="CENTER_LEFT" spacing="20.0" style="-fx-background-color: #1A252F; -fx-padding: 15;" BorderPane.alignment="CENTER">
          <children>
@@ -36,7 +39,7 @@
    <center>
       <VBox spacing="15.0" BorderPane.alignment="CENTER">
          <children>
-            <TableView fx:id="tblProductos" editable="true" prefHeight="320.0" style="-fx-box-background: #FFFFFF;">
+            <TableView fx:id="tblProductos" editable="true" prefHeight="280.0" style="-fx-box-background: #FFFFFF;">
               <columns>
                 <TableColumn fx:id="colNombre" prefWidth="180.0" text="Nombre" />
                 <TableColumn fx:id="colDescripcion" prefWidth="220.0" text="Descripción" />
@@ -47,6 +50,7 @@
             </TableView>
             <HBox spacing="15.0" style="-fx-background-color: #FFFFFF; -fx-padding: 15; -fx-background-radius: 5; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.1), 10, 0, 0, 0);">
                <children>
+                  <!-- Formulario Comercial de Captura -->
                   <VBox spacing="8.0" HBox.hgrow="ALWAYS">
                      <children>
                         <Label text="Formulario de Fila Seleccionada" textFill="#2C3E50">
@@ -65,7 +69,7 @@
                         </HBox>
                         <HBox alignment="CENTER_LEFT" spacing="10.0">
                            <children>
-                              <Button fx:id="btnRandomCode" mnemonicParsing="false" onAction="#handleGenerateCryptoCode" style="-fx-background-color: #8E44AD; -fx-text-fill: white;" text="Generar Código Seguro (12D)" />
+                              <Button fx:id="btnRandomCode" mnemonicParsing="false" onAction="#handleGenerateCryptoCode" style="-fx-background-color: #8E44AD; -fx-text-fill: white; -fx-font-weight: bold;" text="Generar Código Seguro (12D)" />
                               <Label fx:id="lblAlertaCam" text="Estado Cámara: Monitoreando..." textFill="#7F8C8D" />
                            </children>
                            <VBox.margin>
@@ -74,14 +78,24 @@
                         </HBox>
                      </children>
                   </VBox>
-                  <VBox alignment="CENTER" prefWidth="160.0" spacing="5.0" style="-fx-border-color: #BDC3C7; -fx-border-width: 1; -fx-padding: 5;">
+                  
+                  <!-- CUMPLIMIENTO HARDWARE: Espacio Físico donde se renderiza la Webcam a 30 FPS -->
+                  <VBox alignment="CENTER" prefWidth="170.0" spacing="5.0" style="-fx-border-color: #34495E; -fx-border-width: 2; -fx-padding: 5; -fx-background-color: #020617;">
                      <children>
-                        <Label text="Previsualización QR / Canvas">
-                           <font>
-                              <Font size="10.0" />
-                           </font>
+                        <Label text="VISTA PREVIA CÁMARA" textFill="WHITE">
+                           <font><Font name="System Bold" size="10.0" /></font>
                         </Label>
-                        <Canvas fx:id="canvasPreview" height="90.0" width="140.0" />
+                        <ImageView fx:id="webcamImageView" fitHeight="90.0" fitWidth="150.0" pickOnBounds="true" preserveRatio="true" />
+                     </children>
+                  </VBox>
+
+                  <!-- CUMPLIMIENTO EXCLUSIVO: Espacio de la hoja A4 Trilineal en el Canvas -->
+                  <VBox alignment="CENTER" prefWidth="170.0" spacing="5.0" style="-fx-border-color: #BDC3C7; -fx-border-width: 1; -fx-padding: 5; -fx-background-color: #FFFFFF;">
+                     <children>
+                        <Label text="PREVISUALIZACIÓN UPC-A" textFill="#2C3E50">
+                           <font><Font name="System Bold" size="10.0" /></font>
+                        </Label>
+                        <Canvas fx:id="canvasPreview" height="90.0" width="150.0" />
                      </children>
                   </VBox>
                </children>

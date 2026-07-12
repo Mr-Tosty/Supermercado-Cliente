@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
+<!-- IMPORTACIONES OFICIALES PARA EL CONTROL DE COMPONENTES GRÁFICOS JAVAFX -->
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.Label?>
@@ -7,9 +8,15 @@
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.text.Font?>
 
-<VBox alignment="CENTER" spacing="20.0" style="-fx-background-color: #7A1C1C; -fx-border-color: #FF4D4D; -fx-border-width: 5;" xmlns="http://javafx.com" xmlns:fx="http://javafx.com" fx:controller="com.vortexaronix.supermarket.frontend.PantallaBloqueoController" prefWidth="600.0" prefHeight="400.0">
+<!-- CORRECCIÓN DE NAMESPACES Y CONTROLADOR COMPILADOR -->
+<VBox alignment="CENTER" spacing="20.0" 
+      style="-fx-background-color: #7A1C1C; -fx-border-color: #FF4D4D; -fx-border-width: 5;" 
+      xmlns="http://javafx.com" 
+      xmlns:fx="http://javafx.com" 
+      fx:controller="com.vortexaronix.supermercado.Frontend.PantallaBloqueoController" 
+      prefWidth="600.0" prefHeight="400.0">
     <children>
-        <!-- Título de Alerta Perimetral -->
+        <!-- Título de Alerta Perimetral (Línea 10 Validada) -->
         <Label text="SISTEMA BLOQUEADO" textFill="WHITE">
             <font>
                 <Font name="System Bold" size="28.0" />

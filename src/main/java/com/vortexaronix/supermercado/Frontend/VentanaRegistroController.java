@@ -28,7 +28,7 @@ import javafx.application.Platform;
 import javafx.beans.value.ChangeListener;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-import javafx.event.ActionEvent;
+import javafx.event.ActionEvent; 
 import javafx.fxml.FXML;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.control.*;
@@ -267,19 +267,16 @@ public class VentanaRegistroController {
         if (jsonPayload == null || jsonPayload.strip().isEmpty()) {
             return;
         }
-
-        // CUMPLIMIENTO: Uso nativo de Virtual Threads en paralelo para envíos concurrentes sin lag
+        
         Thread.startVirtualThread(() -> {
             try {
-                // Apunta al endpoint /generate-hibrido que administra el reciclaje caótico de MariaDB
                 HttpRequest request = HttpRequest.newBuilder()
                         .uri(URI.create(urlBaseServer + "/generate-hibrido"))
                         .header("Content-Type", "application/json")
                         .header("Authorization", "Bearer " + SecurityConfigLoader.getInstance().getApiToken())
                         .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
                         .build();
-
-                // Ejecución síncrona dentro del hilo virtual en segundo plano (Evita colisiones de buffers)
+                
                 HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
                 
                 if (response.statusCode() == 200 || response.statusCode() == 201) {
@@ -349,23 +346,34 @@ public class VentanaRegistroController {
         if (registrosValidados != CAPACIDAD_HOJA) {
             return;
         }
-
-        for (ProductoFX item : listaTablaMemoria) {
+        System.out.println("[HARDWARE] Generando lote de etiquetas comerciales trilineales en hoja A4...");
+        
+        if (servicioImpresora != null) {
+            servicioImpresora.ejecutarImpresionYEnvioConcurrente();
+        }
+        
+        for (ProductoFX producto : listaTablaMemoria) {
             String jsonPayload = String.format(
-                    "{\"codigoBarras\":\"%s\",\"nombre\":\"%s\",\"descripcion\":\"%s\",\"precio\":%s,\"stockActual\":%s}",
-                    item.getCodigoBarras(), item.getNombre(), item.getDescripcion(), item.getPrecio(), item.getStockActual()
+                "{\"codigoBarras\":\"%s\",\"nombre\":\"%s\",\"descripcion\":\"%s\",\"precio\":%s,\"stockActual\":%s}",
+                producto.getCodigoBarras(), producto.getNombre(), producto.getDescripcion(), producto.getPrecio(), producto.getStockActual()
             );
-            despacharPostConcurrenteLan(jsonPayload);
+
+            enviarRegistroHibrido(jsonPayload);
         }
 
         servicioImpresora.ejecutarImpresionYEnvioConcurrente();
         lblAlertaCam.setText("Estado: Planilla impresa y sincronizada.");
-
+        
+        btnImprimir.setDisable(true); 
+        lblContadorDesperdicio.setText("Planilla de Hoja: 0 / " + CAPACIDAD_HOJA);
+        
         registrosValidados = 0;
         filaActualContabilizada = false;
         listaTablaMemoria.clear();
+        txtCodigo.setEditable(true);
         evaluarBloqueoDeImpresion();
         limpiarCamposFormulario();
+        lblAlertaCam.setText("Estado: Lote enviado con éxito. Planilla vaciada.");
     }
 
     private void despacharPostConcurrenteLan(String jsonPayload) {
@@ -426,5 +434,24 @@ public class VentanaRegistroController {
             }
             return json.substring(start, end).trim();
         }
+    }
+    
+     @FXML
+    @SuppressWarnings("unused")
+    private void handleGenerateCryptoCode(ActionEvent event) {
+        SecureRandom randomSeguro = new SecureRandom();
+        StringBuilder sb = new StringBuilder();
+
+        for (int i = 0; i < 12; i++) {
+            sb.append(randomSeguro.nextInt(10));
+        }
+        String codigoGenerado = sb.toString();
+
+        txtCodigo.setText(codigoGenerado);
+        txtCodigo.setEditable(false);
+        
+        CanvasGenerator.renderCodeMarkup(canvasPreview, codigoGenerado);
+        
+        lblAlertaCam.setText("Estado: Código Seguro Aleatorio 12D creado y graficado.");
     }
 }

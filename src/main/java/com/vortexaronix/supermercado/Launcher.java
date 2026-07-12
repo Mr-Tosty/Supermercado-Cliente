@@ -14,7 +14,6 @@
  */
 package com.vortexaronix.supermercado;
 
-import com.vortexaronix.supermercado.Inicio;
 import javafx.application.Application;
 
 /**

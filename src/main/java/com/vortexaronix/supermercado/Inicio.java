@@ -39,7 +39,7 @@ public class Inicio extends Application {
         try (BufferedReader reader = Files.newBufferedReader(configPath, java.nio.charset.StandardCharsets.UTF_8)) {
             java.util.Properties propiedadesConfig = new java.util.Properties();
             propiedadesConfig.load(reader);
-            
+
             this.servidorIp = propiedadesConfig.getProperty("server.ip");
             String puertoStr = propiedadesConfig.getProperty("server.port");
             this.tokenSeguridad = propiedadesConfig.getProperty("server.token");
@@ -126,7 +126,14 @@ public class Inicio extends Application {
 
         } catch (IOException | NullPointerException e) {
             System.err.println("[CRÍTICO] Fallo en el arranque de infraestructura: " + e.getMessage());
+            System.err.println("\n[🔍 COMPILADOR TELEMETRÍA - DIAGNÓSTICO EN TIEMPO REAL]");
+            System.err.println("======================================================================");
+            System.err.println("► Clase del Fallo: " + e.getClass().getName());
+            System.err.println("► Causa Raíz FXML: " + e.getCause());
+            System.err.println("► Mensaje del Kernel: " + e.getMessage());
+            System.err.println("======================================================================\n");
             mostrarErrorFatal("Detalle del error: " + e.getLocalizedMessage());
+            throw e;
         }
     }
 
