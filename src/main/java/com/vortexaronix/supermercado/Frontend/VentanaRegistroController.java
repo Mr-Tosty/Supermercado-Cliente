@@ -16,6 +16,7 @@ package com.vortexaronix.supermercado.Frontend;
 
 import com.vortexaronix.supermercado.Frontend.Network.ApiClient;
 import com.vortexaronix.supermercado.Frontend.Util.ProductoFX;
+import com.vortexaronix.supermercado.Frontend.Util.ServicioImpresoraPlanilla;
 import java.awt.image.BufferedImage;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -101,6 +102,7 @@ public class VentanaRegistroController {
 
     private String urlBaseServer;
     private volatile boolean camaraHardwareActiva = true;
+    private ServicioImpresoraPlanilla servicioImpresora;
 
     @FXML
     public void initialize() {
@@ -129,6 +131,9 @@ public class VentanaRegistroController {
         lblStatusNet.setText("Red LAN: Activa -> Canal seguro apuntando a " + urlBaseServer);
 
         Thread.startVirtualThread(this::bucleProcesamientoCamaraHardware);
+        this.servicioImpresora = new ServicioImpresoraPlanilla(
+            txtNombre, txtDescripcion, txtPrecio, txtCodigo, txtStock, lblContadorDesperdicio, btnImprimir, canvasPreview
+        );
     }
 
     /**
@@ -284,6 +289,8 @@ public class VentanaRegistroController {
             limpiarCamposFormulario();
             filaActualContabilizada = false;
         }
+        servicioImpresora.registrarAccionAgregarFila();
+        lblAlertaCam.setText("Estado: Fila indexada. Nueva celda abierta para monitoreo.");
     }
 
     @FXML
@@ -314,7 +321,10 @@ public class VentanaRegistroController {
             );
             despacharPostConcurrenteLan(jsonPayload);
         }
-
+        
+        servicioImpresora.ejecutarImpresionYEnvioConcurrente();
+        lblAlertaCam.setText("Estado: Planilla impresa y sincronizada.");
+        
         registrosValidados = 0;
         filaActualContabilizada = false;
         listaTablaMemoria.clear();
