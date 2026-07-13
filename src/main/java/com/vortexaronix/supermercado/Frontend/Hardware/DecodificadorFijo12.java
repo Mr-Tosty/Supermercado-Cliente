@@ -17,6 +17,7 @@ package com.vortexaronix.supermercado.Frontend.Hardware;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * ----------------------------------------------------------------------------
@@ -33,123 +34,67 @@ import java.util.List;
  */
 public class DecodificadorFijo12 {
 
-    // Patrones de codificación estándar para el lado izquierdo del código de barras
-    private static final int[][] L_PATTERNS = {
-        {3, 2, 1, 1}, {2, 2, 2, 1}, {2, 1, 2, 2}, {1, 4, 1, 1}, {1, 1, 3, 2},
-        {1, 2, 3, 1}, {1, 1, 1, 4}, {1, 3, 1, 2}, {1, 2, 1, 3}, {3, 1, 1, 2}
-    };
-    
-    // Patrones de codificación estándar para el lado derecho del código de barras
-    private static final int[][] R_PATTERNS = {
-        {3, 2, 1, 1}, {2, 2, 2, 1}, {2, 1, 2, 2}, {1, 4, 1, 1}, {1, 1, 3, 2},
-        {1, 2, 3, 1}, {1, 1, 1, 4}, {1, 3, 1, 2}, {1, 2, 1, 3}, {3, 1, 1, 2}
-    };
+    private static final Map<Integer, String> L_PATTERNS = Map.of(
+        0, "0001101", 1, "0011001", 2, "0010011", 3, "0111101", 4, "0100011",
+        5, "0110001", 6, "0101111", 7, "0111011", 8, "0110111", 9, "0001011"
+    );
 
-    /**
-     * Analiza la línea central de la imagen capturada por la cámara del supermercado.
-     * Utiliza binarización adaptativa para aislar barras negras de espacios blancos.
-     */
-    public String decodificarLineaCentral(BufferedImage image) {
-        if (image == null) return null;
-        
-        int width = image.getWidth();
-        int centerY = image.getHeight() / 2;
-        int[] pixels = new int[width];
-        long sumaBrillo = 0;
-        for (int x = 0; x < width; x++) {
-            int rgb = image.getRGB(x, centerY);
-            int luma = (int)(0.299 * ((rgb >> 16) & 0xFF) + 0.587 * ((rgb >> 8) & 0xFF) + 0.114 * (rgb & 0xFF));
-            pixels[x] = luma;
-            sumaBrillo += luma;
-        }
+    private static final Map<Integer, String> R_PATTERNS = Map.of(
+        0, "1110010", 1, "1100110", 2, "1101100", 3, "1000010", 4, "1011100",
+        5, "1001110", 6, "1010000", 7, "1000110", 8, "1001000", 9, "1110100"
+    );
 
-        int umbralAdaptativo = (int) (sumaBrillo / width);
-        boolean[] bits = new boolean[width];
-        for (int x = 0; x < width; x++) {
-            bits[x] = pixels[x] < umbralAdaptativo; // True = Barra Negra, False = Espacio Blanco
-        }
+    public static String procesarTransiciones(int[] transiciones, double modulo) {
+        for (int i = 0; i <= transiciones.length - 59; i++) {
+            double guardawidth = transiciones[i] + transiciones[i + 1] + transiciones[i + 2];
+            if (Math.abs((guardawidth / 3.0) - modulo) > modulo * 0.5) continue;
 
-        List<Integer> transiciones = new ArrayList<>();
-        boolean estadoActual = bits[0];
-        int contador = 1;
-
-        for (int x = 1; x < width; x++) {
-            if (bits[x] == estadoActual) {
-                contador++;
-            } else {
-                transiciones.add(contador);
-                estadoActual = bits[x];
-                contador = 1;
-            }
-        }
-        transiciones.add(contador);
-
-        if (transiciones.size() < 59) return null;
-
-        for (int i = 0; i <= transiciones.size() - 59; i++) {
-            float unidadModulo = (transiciones.get(i) + transiciones.get(i + 1) + transiciones.get(i + 2)) / 3.0f;
-            if (unidadModulo < 0.7f) continue;
-
-            StringBuilder codigo = new StringBuilder();
+            StringBuilder codigoBuilder = new StringBuilder();
             int puntero = i + 3;
-            
-            boolean exitoIzq = true;
+            boolean exitoIzquierdo = true;
+
             for (int d = 0; d < 6; d++) {
-                int digito = mapearPatronConTolerancia(transiciones, puntero, unidadModulo, L_PATTERNS);
-                if (digito == -1) { exitoIzq = false; break; }
-                codigo.append(digito);
+                int digito = mapearPatronHardware(transiciones, puntero, modulo, L_PATTERNS);
+                if (digito == -1) { exitoIzquierdo = false; break; }
+                codigoBuilder.append(digito);
                 puntero += 4;
             }
-            if (!exitoIzq) continue;
+            if (!exitoIzquierdo) continue;
 
-            puntero += 5;
-            
-            boolean exitoDer = true;
+            puntero += 5; // Saltar guarda central
+
+            boolean exitoDerecho = true;
             for (int d = 0; d < 6; d++) {
-                int digito = mapearPatronConTolerancia(transiciones, puntero, unidadModulo, R_PATTERNS);
-                if (digito == -1) { exitoDer = false; break; }
-                codigo.append(digito);
+                int digito = mapearPatronHardware(transiciones, puntero, modulo, R_PATTERNS);
+                if (digito == -1) { exitoDerecho = false; break; }
+                codigoBuilder.append(digito);
                 puntero += 4;
             }
 
-            if (exitoDer && codigo.length() == 12) {
-                return codigo.toString();
+            if (exitoDerecho && codigoBuilder.length() == 12) {
+                return codigoBuilder.toString();
             }
         }
         return null;
     }
 
-    /**
-     * Compara las transiciones de la cámara contra la matriz de patrones usando 
-     * algoritmos de distancia de error mínimo en lugar de redondeo estricto.
-     */
-    private int mapearPatronConTolerancia(List<Integer> transiciones, int inicio, float modulo, int[][] patrones) {
-        if (inicio + 4 > transiciones.size()) return -1;
+    private static int mapearPatronHardware(int[] transiciones, int inicio, double modulo, Map<Integer, String> patrones) {
+        if (inicio + 4 > transiciones.length) return -1;
+        int mejorDigito = -1;
+        double menorError = Double.MAX_VALUE;
 
-        float[] proporcionesReales = new float[4];
-        float sumaProporcional = 0;
-        for (int i = 0; i < 4; i++) {
-            proporcionesReales[i] = transiciones.get(inicio + i) / modulo;
-            sumaProporcional += proporcionesReales[i];
-        }
-        
-        if (Math.abs(sumaProporcional - 7.0f) > 1.5f) return -1;
-
-        int mejorDigitoDetectado = -1;
-        float menorErrorRegistrado = Float.MAX_VALUE;
-        
-        for (int d = 0; d < patrones.length; d++) {
-            float errorAcumulado = 0;
+        for (Map.Entry<Integer, String> entrada : patrones.entrySet()) {
+            double error = 0;
+            String patronTeorico = entrada.getValue();
             for (int i = 0; i < 4; i++) {
-                errorAcumulado += Math.abs(proporcionesReales[i] - patrones[d][i]);
+                double anchoTeorico = Character.getNumericValue(patronTeorico.charAt(i)) * modulo;
+                error += Math.abs(transiciones[inicio + i] - anchoTeorico);
             }
-
-            if (errorAcumulado < menorErrorRegistrado && errorAcumulado < 1.8f) {
-                menorErrorRegistrado = errorAcumulado;
-                mejorDigitoDetectado = d;
+            if (error < menorError && error < modulo * 2.0) {
+                menorError = error;
+                mejorDigito = entrada.getKey();
             }
         }
-
-        return mejorDigitoDetectado;
+        return mejorDigito;
     }
 }

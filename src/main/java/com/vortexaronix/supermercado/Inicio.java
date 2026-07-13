@@ -1,6 +1,7 @@
 package com.vortexaronix.supermercado;
 
 import com.vortexaronix.supermercado.Frontend.SecurityConfigLoader;
+import com.vortexaronix.supermercado.Frontend.VentanaRegistroController;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -83,6 +84,7 @@ public class Inicio extends Application {
 
         try {
             SecurityConfigLoader.getInstance().initializeConfiguration();
+            
             ContextoConfiguracion.ip = SecurityConfigLoader.getInstance().getServerIp();
             ContextoConfiguracion.puerto = SecurityConfigLoader.getInstance().getServerPort();
             ContextoConfiguracion.token = SecurityConfigLoader.getInstance().getApiToken();
@@ -156,6 +158,11 @@ public class Inicio extends Application {
 
     private void shutdownSequence() {
         System.out.println("[CLIENTE] Cerrando recursos de red, sockets LAN y hardware...");
+        System.out.println("[CLIENTE] Cerrando recursos de red, sockets LAN y hardware...");
+
+        if (VentanaRegistroController.getTareaLectorCamara() != null) {
+            VentanaRegistroController.getTareaLectorCamara().detenerDispositivoHardware();
+        }
         Platform.exit();
         System.exit(0);
     }

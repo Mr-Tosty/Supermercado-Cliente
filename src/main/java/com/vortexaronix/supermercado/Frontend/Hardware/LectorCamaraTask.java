@@ -14,14 +14,14 @@
  */
 package com.vortexaronix.supermercado.Frontend.Hardware;
 
+import com.github.sarxos.webcam.Webcam;
+import com.github.sarxos.webcam.WebcamResolution;
 import java.awt.image.BufferedImage;
-import java.awt.image.DataBufferInt;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Consumer;
 import javafx.application.Platform;
-import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
-import javafx.scene.image.PixelBuffer;
-import javafx.scene.image.PixelFormat;
 import javafx.scene.image.PixelWriter;
 import javafx.scene.image.WritableImage;
 
@@ -30,122 +30,154 @@ import javafx.scene.image.WritableImage;
  * [ DESCRIPCIÓN TÉCNICA ]
  * ----------------------------------------------------------------------------
  * Descripción : Tarea en segundo plano para captura de cámara y escaneo.
- * Módulos     : Frontend.Hardware
- * Dependencias: DecodificadorFijo12, JavaFX
- * 
- * @author  solda (VA Developer)
+ * Módulos : Frontend.Hardware Dependencias: DecodificadorFijo12, JavaFX
+ *
+ * @author solda (VA Developer)
  * @version 1.0
- * @since   10 jul 2026
+ * @since 10 jul 2026
  * ----------------------------------------------------------------------------
  */
 public class LectorCamaraTask implements Runnable {
 
-    private final ImageView imageView;
-    private final Consumer<String> onCodigoLeido;
-    private final DecodificadorFijo12 decodificador;
-    private volatile boolean activo;
-    private long ultimoEscaneo;
+    private final ImageView visorGraficoFxml;
+    private final Consumer<String> callbackCodigoDetectado;
+    private volatile boolean ejecucionActiva = true;
+    private long ultimoEscaneoExitoso = 0;
 
-    // Buffer de alto rendimiento reutilizable para evitar fugas de memoria RAM
-    private WritableImage writableImageReusable;
-    private int[] pixelBufferArray;
+    // Instancia del descriptor del hardware físico de la cámara
+    private Webcam webcamDispositivo = null;
 
-    public LectorCamaraTask(ImageView imageView, Consumer<String> onCodigoLeido) {
-        this.imageView = imageView;
-        this.onCodigoLeido = onCodigoLeido;
-        this.decodificador = new DecodificadorFijo12(); 
-        this.activo = true;
-        this.ultimoEscaneo = 0;
+    public LectorCamaraTask(ImageView visorGraficoFxml, Consumer<String> callbackCodigoDetectado) {
+        this.visorGraficoFxml = visorGraficoFxml;
+        this.callbackCodigoDetectado = callbackCodigoDetectado;
+        inicializarLenteFisico();
     }
 
     /**
-     * Apaga de forma segura la bandera de ejecución del hilo del hardware.
+     * Interroga el sistema operativo y activa el canal de datos de la cámara
+     * USB.
      */
-    public void detener() {
-        this.activo = false;
-        System.out.println("[HARDWARE] Señal de apagado enviada al hilo de la cámara.");
+    private void inicializarLenteFisico() {
+        try {
+            // Obtener la cámara web predeterminada del equipo
+            webcamDispositivo = Webcam.getDefault();
+            if (webcamDispositivo != null) {
+                // Forzar resolución estándar de escaneo optimizada (640x480)
+                webcamDispositivo.setViewSize(WebcamResolution.VGA.getSize());
+                webcamDispositivo.open(); // Encender físicamente el lente (Activa el led de la cámara)
+                System.out.println("[HARDWARE-LENTE] Lente físico USB encendido e inicializado.");
+            } else {
+                System.err.println("[HARDWARE-ERROR] No se detectó ninguna cámara web física conectada por USB.");
+            }
+        } catch (Exception e) {
+            System.err.println("[HARDWARE-ERROR] Fallo crítico al abrir los drivers de la cámara: " + e.getMessage());
+        }
+    }
+
+    public void detenerDispositivoHardware() {
+        this.ejecucionActiva = false;
+        if (webcamDispositivo != null && webcamDispositivo.isOpen()) {
+            webcamDispositivo.close(); // Apagar el lente físicamente para liberar el hardware
+            System.out.println("[HARDWARE-LENTE] Lente físico apagado limpiamente.");
+        }
     }
 
     @Override
     public void run() {
-        System.out.println("[HARDWARE] Hilo de captura de video inicializado correctamente.");
-        
-        while (activo && !Thread.currentThread().isInterrupted()) {
+        if (webcamDispositivo == null || !webcamDispositivo.isOpen()) {
+            System.err.println("[HARDWARE-ERROR] Bucle cancelado: El driver de video no está activo.");
+            return;
+        }
+
+        while (ejecucionActiva && !Thread.currentThread().isInterrupted()) {
             try {
-                BufferedImage frame = capturarFrameSimulado(); 
-                
-                if (frame != null) {
-                    String codigo = decodificador.decodificarLineaCentral(frame);
+                // 1. CAPTURA REAL: Extraer el fotograma vivo directamente del lente USB
+                BufferedImage frameVideo = webcamDispositivo.getImage();
+
+                if (frameVideo != null) {
+                    // Dibujar el láser guía virtual rojo sobre el buffer antes de enviarlo a pantalla
+                    java.awt.Graphics2D g = frameVideo.createGraphics();
+                    g.setColor(java.awt.Color.RED);
+                    g.setStroke(new java.awt.BasicStroke(2));
+                    g.drawLine(50, 240, 590, 240); // Láser guía visual en Y/2
+                    g.dispose();
+
+                    // 2. BINARIZACIÓN ADAPTATIVA: Procesar la línea central horizontal (Y/2)
+                    String codigoBarrasUPC = analizarLuminanciaCentral(frameVideo);
                     long ahora = System.currentTimeMillis();
-                    
-                    if (codigo != null && !codigo.trim().isEmpty() && (ahora - ultimoEscaneo > 2000)) {
-                        ultimoEscaneo = ahora;
-                        System.out.println("[ESCÁNER] Código detectado con éxito: " + codigo);
-                        Platform.runLater(() -> onCodigoLeido.accept(codigo));
+
+                    // Delay de bloqueo de 2 segundos mandatorio anti-duplicados
+                    if (codigoBarrasUPC != null && (ahora - ultimoEscaneoExitoso > 2000)) {
+                        ultimoEscaneoExitoso = ahora;
+                        String codigoFinal = codigoBarrasUPC;
+                        Platform.runLater(() -> callbackCodigoDetectado.accept(codigoFinal));
                     }
 
-                    Image fxImage = convertirAJavaFXImageOptimizada(frame);
-                    if (fxImage != null) {
-                        Platform.runLater(() -> imageView.setImage(fxImage));
-                    }
+                    // 3. RENDERIZADO EN VIVO: Pintar el cuadro real en el ImageView del FXML
+                    WritableImage imagenFx = transferirBufferAJavaFX(frameVideo);
+                    Platform.runLater(() -> visorGraficoFxml.setImage(imagenFx));
                 }
 
-                Thread.sleep(33); 
-                
+                Thread.sleep(33); // Mantener 30 FPS reales
+
             } catch (InterruptedException e) {
-                System.out.println("[HARDWARE] Interrupción detectada en el hilo de video.");
                 Thread.currentThread().interrupt();
-                activo = false;
+                ejecucionActiva = false;
             } catch (Exception e) {
-                System.err.println("[ALERTA HARDWARE] Anomalía temporal en el frame de la cámara: " + e.getMessage());
-                if (Thread.currentThread().isInterrupted()) {
-                    activo = false;
-                }
+                System.err.println("[HARDWARE-ERROR] Error en el buffer de video vivo: " + e.getMessage());
             }
         }
-        System.out.println("[HARDWARE] Hilo de la cámara finalizado por completo de forma limpia.");
+        detenerDispositivoHardware(); // Asegurar liberación en el apagado
     }
 
-    /**
-     * Simulación de la entrada física de video del supermercado.
-     * Retorna un cuadro de dimensiones estándar 640x480.
-     */
-    private BufferedImage capturarFrameSimulado() {
-        return new BufferedImage(640, 480, BufferedImage.TYPE_INT_RGB);
-    }
+    private String analizarLuminanciaCentral(BufferedImage img) {
+        int width = img.getWidth();
+        int centerY = img.getHeight() / 2; // Línea central Y/2
+        long sumaBrilloTotal = 0;
+        int[] canalGris = new int[width];
 
-    /**
-     * Transfiere el búfer de píxeles directamente a la memoria de la GPU 
-     * mediante la API nativa de JavaFX, eliminando los bucles 'for' lentos de la CPU.
-     */
-    private Image convertirAJavaFXImageOptimizada(BufferedImage bImage) {
-        if (bImage == null) return null;
-        
-        int width = bImage.getWidth();
-        int height = bImage.getHeight();
+        for (int x = 0; x < width; x++) {
+            int rgb = img.getRGB(x, centerY);
+            int luma = (int) (0.299 * ((rgb >> 16) & 0xFF) + 0.587 * ((rgb >> 8) & 0xFF) + 0.114 * (rgb & 0xFF));
+            canalGris[x] = luma;
+            sumaBrilloTotal += luma;
+        }
 
-        if (writableImageReusable == null || writableImageReusable.getWidth() != width || writableImageReusable.getHeight() != height) {
-            
-            if (bImage.getRaster().getDataBuffer() instanceof DataBufferInt) {
-                pixelBufferArray = ((DataBufferInt) bImage.getRaster().getDataBuffer()).getData();
+        int umbralAdaptativo = (int) (sumaBrilloTotal / width);
+        boolean[] matrizBits = new boolean[width];
+        for (int x = 0; x < width; x++) {
+            matrizBits[x] = canalGris[x] < umbralAdaptativo;
+        }
+
+        List<Integer> listaTransiciones = new ArrayList<>();
+        boolean estadoActual = matrizBits[0];
+        int contadorModulos = 1;
+
+        for (int x = 1; x < width; x++) {
+            if (matrizBits[x] == estadoActual) {
+                contadorModulos++;
             } else {
-                pixelBufferArray = new int[width * height];
-            }
-
-            PixelFormat<java.nio.IntBuffer> format = PixelFormat.getIntArgbPreInstance();
-            java.nio.IntBuffer buffer = java.nio.IntBuffer.wrap(pixelBufferArray);
-            PixelBuffer<java.nio.IntBuffer> pixelBuffer = new PixelBuffer<>(width, height, buffer, format);
-            
-            writableImageReusable = new WritableImage(pixelBuffer);
-        } else {
-            // Si el buffer ya existe, simplemente se extrae la matriz de color modificada en el nuevo frame
-            if (bImage.getRaster().getDataBuffer() instanceof DataBufferInt) {
-                int[] srcData = ((DataBufferInt) bImage.getRaster().getDataBuffer()).getData();
-                System.arraycopy(srcData, 0, pixelBufferArray, 0, pixelBufferArray.length);
-                writableImageReusable.getPixelReader(); // Fuerza la actualización del buffer gráfico interno
+                listaTransiciones.add(contadorModulos);
+                estadoActual = matrizBits[x];
+                contadorModulos = 1;
             }
         }
+        listaTransiciones.add(contadorModulos);
 
-        return writableImageReusable;
+        int[] transicionesArr = listaTransiciones.stream().mapToInt(Integer::intValue).toArray();
+        double moduloEstimado = width / 95.0;
+        
+        return DecodificadorFijo12.procesarTransiciones(transicionesArr, moduloEstimado);
+    }
+
+    private WritableImage transferirBufferAJavaFX(BufferedImage bImage) {
+        WritableImage wr = new WritableImage(bImage.getWidth(), bImage.getHeight());
+        PixelWriter pw = wr.getPixelWriter();
+        for (int x = 0; x < bImage.getWidth(); x++) {
+            for (int y = 0; y < bImage.getHeight(); y++) {
+                pw.setArgb(x, y, bImage.getRGB(x, y));
+            }
+        }
+        return wr;
     }
 }
