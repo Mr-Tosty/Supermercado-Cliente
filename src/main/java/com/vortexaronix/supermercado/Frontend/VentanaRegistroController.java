@@ -14,6 +14,8 @@
  */
 package com.vortexaronix.supermercado.Frontend;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vortexaronix.supermercado.Frontend.Hardware.LectorCamaraTask;
 import com.vortexaronix.supermercado.Frontend.Network.ApiClient;
 import com.vortexaronix.supermercado.Frontend.Util.ProductoFX;
@@ -154,7 +156,7 @@ public class VentanaRegistroController {
             return;
         }
 
-        // Mantener intacta tu estructura de construcción de petición HTTP nativa
+        // Mantener exactamente tu estructura original e invariable de petición HTTP nativa
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(urlBaseServer + "/escanear/" + codigo.trim()))
                 .header("Authorization", "Bearer " + SecurityConfigLoader.getInstance().getApiToken())
@@ -167,34 +169,44 @@ public class VentanaRegistroController {
                     if (response.statusCode() == 200) {
                         String json = response.body();
 
-                        // Inyección intacta en tus cuadros de texto del formulario
-                        txtCodigo.setText(codigo.trim());
-                        txtNombre.setText(extraerValorJson(json, "nombre"));
-                        txtDescripcion.setText(extraerValorJson(json, "descripcion"));
-                        txtPrecio.setText(extraerValorJson(json, "precio"));
-                        txtStock.setText(extraerValorJson(json, "stockActual"));
-
-                        txtCodigo.setEditable(false);
-                        CanvasGenerator.renderCodeMarkup(canvasPreview, codigo.trim());
-                        lblAlertaCam.setText("Estado: Artículo localizado.");
-
                         try {
+                            ObjectMapper mapper = new ObjectMapper();
+                            JsonNode raizNodo = mapper.readTree(json);
+
+                            String jsonCodigo = raizNodo.has("codigo_barras") ? raizNodo.get("codigo_barras").asText().trim() : codigo.trim();
+                            String jsonNombre = raizNodo.has("nombre") ? raizNodo.get("nombre").asText().trim() : "Sin nombre";
+                            String jsonDesc = raizNodo.has("descripcion") ? raizNodo.get("descripcion").asText().trim() : "Sin descripción";
+                            String jsonPrecio = raizNodo.has("precio") ? raizNodo.get("precio").asText().trim() : "0.00";
+                            String jsonStock = raizNodo.has("stock_actual") ? raizNodo.get("stock_actual").asText().trim() : "0";
+
+                            txtCodigo.setText(jsonCodigo.isEmpty() ? codigo.trim() : jsonCodigo);
+                            txtNombre.setText(jsonNombre.isEmpty() ? "Sin nombre" : jsonNombre);
+                            txtDescripcion.setText(jsonDesc.isEmpty() ? "Sin descripción" : jsonDesc);
+                            txtPrecio.setText(jsonPrecio.isEmpty() ? "0.00" : jsonPrecio);
+                            txtStock.setText(jsonStock.isEmpty() ? "0" : jsonStock);
+
+                            txtCodigo.setEditable(false);
+                            CanvasGenerator.renderCodeMarkup(canvasPreview, codigo.trim());
+                            lblAlertaCam.setText("Estado: JSON parseado con éxito por librería.");
+
                             ProductoFX productoMapeado = new ProductoFX(
-                                    codigo.trim(),
-                                    extraerValorJson(json, "nombre"),
-                                    extraerValorJson(json, "descripcion"),
-                                    Double.parseDouble(extraerValorJson(json, "precio")),
-                                    Integer.parseInt(extraerValorJson(json, "stockActual"))
+                                    jsonCodigo.isEmpty() ? codigo.trim() : jsonCodigo,
+                                    jsonNombre.isEmpty() ? "Sin nombre" : jsonNombre,
+                                    jsonDesc.isEmpty() ? "Sin descripción" : jsonDesc,
+                                    Double.parseDouble(jsonPrecio.isEmpty() ? "0.00" : jsonPrecio),
+                                    Integer.parseInt(jsonStock.isEmpty() ? "0" : jsonStock)
                             );
                             listaTablaMemoria.add(productoMapeado);
+
                         } catch (Exception e) {
-                            System.err.println("[TABLE-ERROR] Fallo de casteo al indexar en TableView: " + e.getMessage());
+                            System.err.println("[JSON-ERROR] El procesador Jackson rechazó el payload: " + e.getMessage());
+                            lblStatusNet.setText("Red LAN: Error grave en la estructura del JSON.");
                         }
 
                     } else if (response.statusCode() == 404) {
                         limpiarCamposFormulario();
                         txtCodigo.setText(codigo.trim());
-                        txtCodigo.setEditable(false); // Bloqueado perimetralmente
+                        txtCodigo.setEditable(false);
                         lblContadorDesperdicio.setText("Código disponible. Ingrese los datos para registrar este nuevo producto.");
                         lblAlertaCam.setText("Estado: Código Liberado / Disponible.");
                         txtNombre.requestFocus();
@@ -372,31 +384,51 @@ public class VentanaRegistroController {
         lblAlertaCam.setText("Estado: Código Seguro Aleatorio 12D creado y graficado.");
     }
 
-    private void procesarProductoExistente(String json, String codigo) {
-        if (json == null || json.trim().isEmpty()) {
+    /**
+     * Procesa el nodo JSON validado e inyecta la información en las cajas y en
+     * la TableView. Evita fallos de strings vacíos mediante el árbol de datos
+     * de Jackson.
+     */
+    private void procesarProductoExistente(JsonNode raizNodo, String codigo) {
+        if (raizNodo == null) {
             return;
         }
 
-        String nombre = extraerValorJson(json, "nombre");
-        String descripcion = extraerValorJson(json, "descripcion");
-        String precioStr = extraerValorJson(json, "precio");
-        String stockStr = extraerValorJson(json, "stockActual"); // Sincronizado con la base de datos MariaDB
+        String jsonCodigo = raizNodo.has("codigo_barras") ? raizNodo.get("codigo_barras").asText().trim() : codigo.trim();
+        String jsonNombre = raizNodo.has("nombre") ? raizNodo.get("nombre").asText().trim() : "Sin nombre";
+        String jsonDesc = raizNodo.has("descripcion") ? raizNodo.get("descripcion").asText().trim() : "Sin descripción";
+        String jsonPrecio = raizNodo.has("precio") ? raizNodo.get("precio").asText().trim() : "0.00";
+        String jsonStock = raizNodo.has("stock_actual") ? raizNodo.get("stock_actual").asText().trim() : "0";
 
-        txtCodigo.setText(codigo);
-        txtNombre.setText(nombre.isEmpty() ? "Sin nombre" : nombre);
-        txtDescripcion.setText(descripcion.isEmpty() ? "Sin descripción" : descripcion);
-        txtPrecio.setText(precioStr.isEmpty() ? "0.00" : precioStr);
-        txtStock.setText(stockStr.isEmpty() ? "0" : stockStr);
+        txtCodigo.setText(jsonCodigo.isEmpty() ? codigo.trim() : jsonCodigo);
+        txtNombre.setText(jsonNombre.isEmpty() ? "Sin nombre" : jsonNombre);
+        txtDescripcion.setText(jsonDesc.isEmpty() ? "Sin descripción" : jsonDesc);
+        txtPrecio.setText(jsonPrecio.isEmpty() ? "0.00" : jsonPrecio);
+        txtStock.setText(jsonStock.isEmpty() ? "0" : jsonStock);
 
-        txtCodigo.setEditable(false); // Bloqueo perimetral de clave primaria
-        lblContadorDesperdicio.setText("Producto cargado. Presione agregar para planilla.");
-
+        txtCodigo.setEditable(false);
         txtNombre.setEditable(true);
         txtDescripcion.setEditable(true);
         txtPrecio.setEditable(true);
         txtStock.setEditable(true);
 
-        CanvasGenerator.renderCodeMarkup(canvasPreview, codigo);
+        lblContadorDesperdicio.setText("Producto cargado. Presione agregar para planilla.");
+        CanvasGenerator.renderCodeMarkup(canvasPreview, codigo.trim());
+
+        try {
+            ProductoFX productoMapeado = new ProductoFX(
+                    jsonCodigo.isEmpty() ? codigo.trim() : jsonCodigo,
+                    jsonNombre.isEmpty() ? "Sin nombre" : jsonNombre,
+                    jsonDesc.isEmpty() ? "Sin descripción" : jsonDesc,
+                    Double.parseDouble(jsonPrecio.isEmpty() ? "0.00" : jsonPrecio),
+                    Integer.parseInt(jsonStock.isEmpty() ? "0" : jsonStock)
+            );
+
+            listaTablaMemoria.add(productoMapeado);
+
+        } catch (NumberFormatException e) {
+            System.err.println("[PARSER-ERROR] Error al castear tipos numéricos en el objeto gráfico: " + e.getMessage());
+        }
     }
 
     private void activarModoRegistroNuevo(String codigo) {
@@ -415,38 +447,6 @@ public class VentanaRegistroController {
         txtDescripcion.clear();
         txtPrecio.clear();
         txtStock.clear();
-    }
-
-    private String extraerValorJson(String json, String key) {
-        if (json == null) {
-            return "";
-        }
-        String quoteKey = "\"" + key + "\":";
-        int start = json.indexOf(quoteKey);
-        if (start == -1) {
-            return "";
-        }
-        start += quoteKey.length();
-        while (start < json.length() && (json.charAt(start) == ' ' || json.charAt(start) == ':')) {
-            start++;
-        }
-        if (start >= json.length()) {
-            return "";
-        }
-        if (json.charAt(start) == '"') {
-            start++;
-            int end = json.indexOf("\"", start);
-            return (end == -1) ? "" : json.substring(start, end);
-        } else {
-            int endComma = json.indexOf(",", start);
-            int endBrace = json.indexOf("}", start);
-            int end = (endComma != -1 && endComma < endBrace) ? endComma : endBrace;
-            if (end == -1) {
-                end = json.length();
-            }
-            return json.substring(start, end).trim();
-        }
-
     }
 
     public static LectorCamaraTask getTareaLectorCamara() {

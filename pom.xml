@@ -35,6 +35,12 @@
             <artifactId>webcam-capture</artifactId>
             <version>0.3.12</version>
         </dependency>
+        <!-- Procesador Industrial de JSON de Alta Velocidad contra Cadenas Vacías -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.17.0</version>
+        </dependency>
     </dependencies>
 
     <build>
