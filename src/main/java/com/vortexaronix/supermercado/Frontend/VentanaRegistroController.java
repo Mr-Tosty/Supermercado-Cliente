@@ -6,10 +6,13 @@
  *     \__/    |_|   |_|   ARONIX
  * ----------------------------------------------------------------------------
  *  @Copyright: (c) 2026 Vortex Aronix.
- *  @License  : Privativa - Todos los derechos reservados.
- *  @Terms    : La copia, distribución o ingeniería inversa de este código 
- *              fuente está estrictamente prohibida bajo los términos de VA.
- *              Para mas informacion en https://vortexaronix.com/FAQs/App/Escritorio/Modificaciones.
+ *  @License  : Open Source (Licencia Permisiva / Código Abierto)
+ *  @Terms    : Se permite el uso, modificación y distribución de este código.
+ *              Debe incluirse este aviso de derechos de autor original y 
+ *              acreditar a Vortex Aronix como desarrollador original.
+ *              EL SOFTWARE SE PROPORCIONA "TAL CUAL", SIN GARANTÍAS DE NINGÚN 
+ *              TIPO. La compañía no se hace responsable de daños, fallos o 
+ *              reclamaciones derivadas de su uso.
  * ----------------------------------------------------------------------------
  */
 package com.vortexaronix.supermercado.Frontend;
